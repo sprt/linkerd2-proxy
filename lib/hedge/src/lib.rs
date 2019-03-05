@@ -10,8 +10,8 @@ use linkerd2_metrics::latency;
 use tokio_timer::{clock, Delay};
 use tower_service::Service;
 
+use std::cell::RefCell;
 use std::rc::Rc;
-use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 mod rotating;
@@ -33,7 +33,7 @@ pub struct Hedge<P, S> {
     service: S,
     latency_percentile: f32,
     // A rotating histogram is used to track response latency.
-    pub latency_histogram: Rc<Mutex<Rotating<Histogram<latency::Ms>>>>,
+    pub latency_histogram: Rc<RefCell<Rotating<Histogram<latency::Ms>>>>,
 }
 
 pub struct ResponseFuture<P, S, Request>
@@ -64,10 +64,8 @@ impl<P, S> Hedge<P, S> {
         P: Policy<Request> + Clone,
         S: Service<Request>,
     {
-        let new: fn() -> Histogram<latency::Ms> = || {
-            Histogram::new(latency::BOUNDS)
-        };
-        let latency_histogram = Rc::new(Mutex::new(Rotating::new(rotation_period, new)));
+        let new: fn() -> Histogram<latency::Ms> = || Histogram::new(latency::BOUNDS);
+        let latency_histogram = Rc::new(RefCell::new(Rotating::new(rotation_period, new)));
         Hedge {
             policy,
             service,
@@ -97,17 +95,16 @@ where
         let start = clock::now();
         // Find the nth percentile latency from the read side of the histogram.
         // Requests which take longer than this will be pre-emptively retried.
-        let read = self.latency_histogram.lock().unwrap().read();
+        let mut histo = self.latency_histogram.borrow_mut();
         // TODO: Consider adding a minimum delay for hedge requests (perhaps as
         // a factor of the p50 latency).
-        let delay = read.lock().unwrap()
+        let delay = histo
+            .read()
             // We will only issue a hedge request if there are sufficiently many
             // data points in the histogram to give us confidence about the
             // distribution.
             .percentile(self.latency_percentile, 10)
-            .map(|hedge_timeout| {
-                Delay::new(start + Duration::from_millis(hedge_timeout))
-            });
+            .map(|hedge_timeout| Delay::new(start + Duration::from_millis(hedge_timeout)));
 
         ResponseFuture {
             request: cloned,
@@ -120,15 +117,16 @@ where
     }
 }
 
-impl<P, S, Request> ResponseFuture<P, S, Request> where
+impl<P, S, Request> ResponseFuture<P, S, Request>
+where
     P: Policy<Request>,
     S: Service<Request>,
 {
     /// Record the latency of a completed request in the latency histogram.
     fn record(&mut self) {
         let duration = clock::now() - self.start;
-        let write = self.hedge.latency_histogram.lock().unwrap().write();
-        write.lock().unwrap().add(duration);
+        let mut histo = self.hedge.latency_histogram.borrow_mut();
+        histo.write().add(duration);
     }
 }
 
@@ -158,37 +156,49 @@ where
             if let Some(ref mut hedge_fut) = self.hedge_fut {
                 // If the hedge future exists, return its result.
                 return hedge_fut.poll();
-            } else {
-                // Original future is pending, but hedge hasn't started.  Check
-                // the delay.
-                let delay = match self.delay.as_mut() {
-                    Some(d) => d,
-                    // No delay, can't retry.
-                    None => return Ok(Async::NotReady),
-                };
-                match delay.poll() {
-                    Ok(Async::Ready(_)) => {
-                        try_ready!(self.hedge.poll_ready());
-                        if let Some(req) = self.request.take() {
-                            if self.hedge.policy.can_retry(&req) {
-                                // Start the hedge request.
-                                self.request = self.hedge.policy.clone_request(&req);
-                                self.hedge_fut = Some(self.hedge.service.call(req));
-                            } else {
-                                // Policy says we can't retry.
-                                // Put the taken request back.
-                                self.request = Some(req);
-                                return Ok(Async::NotReady);
-                            }
+            }
+            // Original future is pending, but hedge hasn't started.  Check
+            // the delay.
+            let delay = match self.delay.as_mut() {
+                Some(d) => d,
+                // No delay, can't retry.
+                None => return Ok(Async::NotReady),
+            };
+            match delay.poll() {
+                Ok(Async::Ready(_)) => {
+                    try_ready!(self.hedge.poll_ready());
+                    if let Some(req) = self.request.take() {
+                        if self.hedge.policy.can_retry(&req) {
+                            // Start the hedge request.
+                            self.request = self.hedge.policy.clone_request(&req);
+                            self.hedge_fut = Some(self.hedge.service.call(req));
                         } else {
-                            // No cloned request, can't retry.
+                            // Policy says we can't retry.
+                            // Put the taken request back.
+                            self.request = Some(req);
                             return Ok(Async::NotReady);
                         }
-                    },
-                    Ok(Async::NotReady) => return Ok(Async::NotReady), // Not time to retry yet.
-                    Err(_) => return Ok(Async::NotReady), // Timer error, don't retry.
+                    } else {
+                        // No cloned request, can't retry.
+                        return Ok(Async::NotReady);
+                    }
                 }
+                Ok(Async::NotReady) => return Ok(Async::NotReady), // Not time to retry yet.
+                Err(_) => {
+                    // TODO: log timer error
+                    // Timer error, don't retry.
+                    return Ok(Async::NotReady);
+                },
             }
         }
+    }
+}
+
+impl<V> rotating::Clear for Histogram<V>
+where
+    V: Into<u64>,
+{
+    fn clear(&mut self) {
+        self.clear_buckets();
     }
 }

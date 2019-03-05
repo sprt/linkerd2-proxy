@@ -1,7 +1,5 @@
 extern crate tokio_timer;
 
-use std::rc::Rc;
-use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use tokio_timer::clock;
@@ -12,33 +10,32 @@ use tokio_timer::clock;
 /// the read T should always contain a full period (the previous period) of
 /// write operations.
 pub struct Rotating<T> {
-    read: Rc<Mutex<T>>,
-    write: Rc<Mutex<T>>,
-    new: fn() -> T,
+    read: T,
+    write: T,
     last_rotation: Instant,
     period: Duration,
 }
 
-impl<T> Rotating<T> {
+impl<T: Clear> Rotating<T> {
 
     pub fn new(period: Duration, new: fn() -> T) -> Rotating<T> {
         Rotating {
-            read: Rc::new(Mutex::new(new())),
-            write: Rc::new(Mutex::new(new())),
+            read: new(),
+            write: new(),
             new,
             last_rotation: clock::now(),
             period,
         }
     }
 
-    pub fn read(&mut self) -> Rc<Mutex<T>> {
+    pub fn read(&mut self) -> &mut T {
         self.maybe_rotate();
-        self.read.clone()
+        &mut self.read
     }
 
-    pub fn write(&mut self) -> Rc<Mutex<T>> {
+    pub fn write(&mut self) -> &mut T {
         self.maybe_rotate();
-        self.write.clone()
+        &mut self.write
     }
 
     fn maybe_rotate(&mut self) {
@@ -54,17 +51,21 @@ impl<T> Rotating<T> {
     }
 
     fn rotate(&mut self) {
-        self.read = self.write.clone();
-        self.write = Rc::new(Mutex::new((self.new)()));
+        std::mem::swap(&mut self.read, &mut self.write);
+        self.write.clear();
     }
 
     fn clear(&mut self) {
-        self.read = Rc::new(Mutex::new((self.new)()));
-        self.write = Rc::new(Mutex::new((self.new)()));
+        self.read.clear();
+        self.write.clear();
     }
 
     fn duration_as_nanos(d: &Duration) -> u64 {
         d.as_secs() * 1_000_000_000 + (d.subsec_nanos() as u64)
     }
 
+}
+
+pub trait Clear {
+    fn clear(&mut self);
 }

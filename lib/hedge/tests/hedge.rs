@@ -173,13 +173,12 @@ fn populate_histogram<P: Policy<Req> + Clone>(service: &mut hedge::Hedge<P, Mock
     // Writing directly to the read histogram isn't typical usage but we do it
     // here to populate the read histogram directly so that we don't have to
     // wait for a rotation.
-    let read = service.latency_histogram.lock().unwrap().read();
-    let mut locked = read.lock().unwrap();
+    let mut histo = service.latency_histogram.borrow_mut();
 
     for _ in 0..8 {
-        locked.add(ms(1))
+        histo.read().add(ms(1))
     }
     for _ in 8..10 {
-        locked.add(ms(10));
+        histo.read().add(ms(10));
     }
 }

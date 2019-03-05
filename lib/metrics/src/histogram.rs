@@ -117,6 +117,12 @@ impl<V: Into<u64>> Histogram<V> {
         }
         panic!("Ran off the end of the buckets");
     }
+
+    pub fn clear_buckets(&mut self) {
+        for bucket in self.buckets.iter_mut() {
+            *bucket = Counter::from(0);
+        }
+    }
 }
 
 #[cfg(any(test, feature = "test_util"))]
