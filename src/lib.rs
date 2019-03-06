@@ -40,7 +40,7 @@ extern crate tower_util;
 extern crate trust_dns_resolver;
 extern crate try_lock;
 
-extern crate linkerd2_hedge as hedge;
+extern crate linkerd2_hedge;
 #[macro_use]
 extern crate linkerd2_metrics;
 extern crate linkerd2_never as never;

@@ -22,7 +22,6 @@ impl<T: Clear> Rotating<T> {
         Rotating {
             read: new(),
             write: new(),
-            new,
             last_rotation: clock::now(),
             period,
         }

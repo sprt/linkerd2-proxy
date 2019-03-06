@@ -306,7 +306,7 @@ where
                 };
                 use proxy::{
                     canonicalize,
-                    http::{balance, header_from_target, metrics, retry},
+                    http::{balance, header_from_target, hedge, metrics, retry},
                     resolve,
                 };
 
@@ -373,6 +373,8 @@ where
                     .push(metrics::layer::<_, classify::Response>(
                         retry_http_metrics.clone(),
                     ))
+                    // TODO: make configurable
+                    .push(hedge::layer(0.9, Duration::from_secs(60)))
                     .push(retry::layer(retry_http_metrics))
                     .push(proxy::http::timeout::layer())
                     .push(metrics::layer::<_, classify::Response>(route_http_metrics))

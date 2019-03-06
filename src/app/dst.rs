@@ -6,6 +6,7 @@ use std::time::Duration;
 use tower_retry::budget::Budget;
 
 use proxy::http::{
+    hedge,
     metrics::classify::{CanClassify, Classify, ClassifyEos, ClassifyResponse},
     profiles, retry, timeout,
 };
@@ -66,6 +67,15 @@ impl timeout::HasTimeout for Route {
 
 // === impl Retry ===
 
+fn clone_request<B: retry::TryClone>(req: &http::Request<B>) -> Option<http::Request<B>> {
+    retry::TryClone::try_clone(req).map(|mut clone| {
+        if let Some(ext) = req.extensions().get::<classify::Response>() {
+            clone.extensions_mut().insert(ext.clone());
+        }
+        clone
+    })
+}
+
 impl retry::Retry for Retry {
     fn retry<B1, B2>(
         &self,
@@ -92,12 +102,27 @@ impl retry::Retry for Retry {
         &self,
         req: &http::Request<B>,
     ) -> Option<http::Request<B>> {
-        retry::TryClone::try_clone(req).map(|mut clone| {
-            if let Some(ext) = req.extensions().get::<classify::Response>() {
-                clone.extensions_mut().insert(ext.clone());
-            }
-            clone
-        })
+        clone_request(req)
+    }
+}
+
+// === impl Hedge
+
+impl hedge::CanHedge for Route {
+    type Budget = Arc<Budget>;
+
+    fn can_hedge(&self) -> Option<Self::Budget> {
+        self.route.retries().map(|retries| retries.budget().clone())
+    }
+}
+
+impl hedge::Budget for Arc<Budget> {
+    fn has_budget<A>(&self, _req: &http::Request<A>) -> bool {
+        self.withdraw().is_ok()
+    }
+
+    fn clone_request<A: retry::TryClone>(&self, req: &http::Request<A>) -> Option<http::Request<A>> {
+        clone_request(req)
     }
 }
 

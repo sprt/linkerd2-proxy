@@ -10,8 +10,7 @@ use linkerd2_metrics::latency;
 use tokio_timer::{clock, Delay};
 use tower_service::Service;
 
-use std::cell::RefCell;
-use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 mod rotating;
@@ -33,7 +32,7 @@ pub struct Hedge<P, S> {
     service: S,
     latency_percentile: f32,
     // A rotating histogram is used to track response latency.
-    pub latency_histogram: Rc<RefCell<Rotating<Histogram<latency::Ms>>>>,
+    pub latency_histogram: Arc<Mutex<Rotating<Histogram<latency::Ms>>>>,
 }
 
 pub struct ResponseFuture<P, S, Request>
@@ -65,7 +64,7 @@ impl<P, S> Hedge<P, S> {
         S: Service<Request>,
     {
         let new: fn() -> Histogram<latency::Ms> = || Histogram::new(latency::BOUNDS);
-        let latency_histogram = Rc::new(RefCell::new(Rotating::new(rotation_period, new)));
+        let latency_histogram = Arc::new(Mutex::new(Rotating::new(rotation_period, new)));
         Hedge {
             policy,
             service,
@@ -95,7 +94,7 @@ where
         let start = clock::now();
         // Find the nth percentile latency from the read side of the histogram.
         // Requests which take longer than this will be pre-emptively retried.
-        let mut histo = self.latency_histogram.borrow_mut();
+        let mut histo = self.latency_histogram.lock().unwrap();
         // TODO: Consider adding a minimum delay for hedge requests (perhaps as
         // a factor of the p50 latency).
         let delay = histo
@@ -125,7 +124,7 @@ where
     /// Record the latency of a completed request in the latency histogram.
     fn record(&mut self) {
         let duration = clock::now() - self.start;
-        let mut histo = self.hedge.latency_histogram.borrow_mut();
+        let mut histo = self.hedge.latency_histogram.lock().unwrap();
         histo.write().add(duration);
     }
 }

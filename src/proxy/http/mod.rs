@@ -4,6 +4,7 @@ pub(super) mod glue;
 pub mod h1;
 pub mod h2;
 pub mod header_from_target;
+pub mod hedge;
 pub mod insert_target;
 pub mod metrics;
 pub mod normalize_uri;
