@@ -16,7 +16,7 @@ pub struct Rotating<T> {
     period: Duration,
 }
 
-impl<T: Clear> Rotating<T> {
+impl<T: Clear + Size> Rotating<T> {
 
     pub fn new(period: Duration, new: fn() -> T) -> Rotating<T> {
         Rotating {
@@ -42,8 +42,10 @@ impl<T: Clear> Rotating<T> {
         // TODO: replace with delta.duration_div when it becomes stable.
         let rotations = (Self::duration_as_nanos(&delta) / Self::duration_as_nanos(&self.period)) as u32;
         if rotations >= 2 {
+            trace!("Time since last rotation is {:?}.  clearing!", delta);
             self.clear();
         } else if rotations == 1 {
+            trace!("Time since last rotation is {:?}. rotating!", delta);
             self.rotate();
         }
         self.last_rotation += self.period * rotations;
@@ -51,6 +53,7 @@ impl<T: Clear> Rotating<T> {
 
     fn rotate(&mut self) {
         std::mem::swap(&mut self.read, &mut self.write);
+        trace!("Rotated {:?} points into read", self.read.size());
         self.write.clear();
     }
 
@@ -67,4 +70,8 @@ impl<T: Clear> Rotating<T> {
 
 pub trait Clear {
     fn clear(&mut self);
+}
+
+pub trait Size {
+    fn size(&self) -> u64;
 }

@@ -7,6 +7,7 @@ publish = false
 [dependencies]
 futures = "0.1"
 linkerd2-metrics = { version = "0.1.0", path = "../metrics" }
+log = "0.4.1"
 tower-service = { git = "https://github.com/tower-rs/tower" }
 tower-retry = { git = "https://github.com/tower-rs/tower" }
 tokio-mock-task = { git = "https://github.com/carllerche/tokio-mock-task" }

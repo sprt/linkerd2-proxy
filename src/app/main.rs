@@ -374,7 +374,7 @@ where
                         retry_http_metrics.clone(),
                     ))
                     // TODO: make configurable
-                    .push(hedge::layer(0.9, Duration::from_secs(60)))
+                    .push(hedge::layer(0.9, Duration::from_secs(30)))
                     .push(retry::layer(retry_http_metrics))
                     .push(proxy::http::timeout::layer())
                     .push(metrics::layer::<_, classify::Response>(route_http_metrics))

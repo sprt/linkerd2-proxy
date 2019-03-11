@@ -123,6 +123,10 @@ impl<V: Into<u64>> Histogram<V> {
             *bucket = Counter::from(0);
         }
     }
+
+    pub fn size(&self) -> u64 {
+        self.buckets.iter().map(|counter| counter.value()).sum()
+    }
 }
 
 #[cfg(any(test, feature = "test_util"))]

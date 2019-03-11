@@ -1,6 +1,8 @@
 #[macro_use]
 extern crate futures;
 extern crate linkerd2_metrics;
+#[macro_use]
+extern crate log;
 extern crate tokio_timer;
 extern crate tower_service;
 
@@ -103,7 +105,14 @@ where
             // data points in the histogram to give us confidence about the
             // distribution.
             .percentile(self.latency_percentile, 10)
-            .map(|hedge_timeout| Delay::new(start + Duration::from_millis(hedge_timeout)));
+            .map(|hedge_timeout| {
+                trace!("Calling hedge-able request with {}ms hedge timeout", hedge_timeout);
+                Delay::new(start + Duration::from_millis(hedge_timeout))
+            });
+
+        if delay.is_none() {
+            trace!("Not enough data points in read histo");
+        }
 
         ResponseFuture {
             request: cloned,
@@ -124,6 +133,7 @@ where
     /// Record the latency of a completed request in the latency histogram.
     fn record(&mut self) {
         let duration = clock::now() - self.start;
+        trace!("Recording latency: {:?}", duration);
         let mut histo = self.hedge.latency_histogram.lock().unwrap();
         histo.write().add(duration);
     }
@@ -154,7 +164,17 @@ where
 
             if let Some(ref mut hedge_fut) = self.hedge_fut {
                 // If the hedge future exists, return its result.
-                return hedge_fut.poll();
+                let p = hedge_fut.poll();
+                if let Ok(ref a) = p {
+                    if a.is_ready() {
+                        trace!("Using hedge result! Woohoo! {:?}", clock::now() - self.start);
+                        let duration = clock::now() - self.start;
+                        trace!("Recording total hedge latency: {:?}", duration);
+                        let mut histo = self.hedge.latency_histogram.lock().unwrap();
+                        histo.write().add(duration);
+                    }
+                }
+                return p;
             }
             // Original future is pending, but hedge hasn't started.  Check
             // the delay.
@@ -165,19 +185,23 @@ where
             };
             match delay.poll() {
                 Ok(Async::Ready(_)) => {
+                    trace!("Hedge timeout reached");
                     try_ready!(self.hedge.poll_ready());
                     if let Some(req) = self.request.take() {
                         if self.hedge.policy.can_retry(&req) {
                             // Start the hedge request.
                             self.request = self.hedge.policy.clone_request(&req);
+                            trace!("Issuing hedge request");
                             self.hedge_fut = Some(self.hedge.service.call(req));
                         } else {
                             // Policy says we can't retry.
                             // Put the taken request back.
+                            trace!("No budget for hedge retry");
                             self.request = Some(req);
                             return Ok(Async::NotReady);
                         }
                     } else {
+                        trace!("Request not clonable, no hedge retry");
                         // No cloned request, can't retry.
                         return Ok(Async::NotReady);
                     }
@@ -186,6 +210,7 @@ where
                 Err(_) => {
                     // TODO: log timer error
                     // Timer error, don't retry.
+                    error!("Timer error");
                     return Ok(Async::NotReady);
                 },
             }
@@ -199,5 +224,14 @@ where
 {
     fn clear(&mut self) {
         self.clear_buckets();
+    }
+}
+
+impl<V> rotating::Size for Histogram<V>
+where
+    V: Into<u64>,
+{
+    fn size(&self) -> u64 {
+        Histogram::size(self)
     }
 }
