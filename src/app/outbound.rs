@@ -8,6 +8,9 @@ use control::destination::{Metadata, ProtocolHint};
 use tap;
 use transport::{connect, tls};
 use {Conditional, NameAddr};
+use addr::Addr;
+use proxy::http::router::Recognize;
+use dns;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Endpoint {
@@ -15,6 +18,11 @@ pub struct Endpoint {
     pub addr: SocketAddr,
     pub identity: tls::PeerIdentity,
     pub metadata: Metadata,
+}
+
+#[derive(Clone)]
+pub struct RecognizeAddr {
+    suffixes: Arc<Vec<dns::Suffix>>,
 }
 
 // === impl Endpoint ===
@@ -103,6 +111,55 @@ impl tap::Inspect for Endpoint {
 
     fn is_outbound<B>(&self, _: &http::Request<B>) -> bool {
         true
+    }
+}
+
+// === impl RecognizeAddr ===
+
+impl<B> Recognize<http::Request<B>> for RecognizeAddr {
+    type Target = Addr;
+
+    fn recognize(&self, req: &http::Request<B>) -> Option<Self::Target> {
+        // FIXME(eliza): this is pretty gross but i wanted to get the same
+        // logging we did previously...
+        super::http_request_l5d_override_dst_addr(req)
+            .map(|override_addr| {
+                debug!("outbound addr={:?}; dst-override", override_addr);
+                override_addr
+            })
+            .or_else(|_| {
+                let addr = super::http_request_authority_addr(req)
+                    .or_else(|_| super::http_request_host_addr(req));
+                debug!("outbound addr={:?}", addr);
+                addr
+            })
+            .ok()
+            .and_then(|addr| {
+                let in_search_suffixes = {
+                    let auth = addr
+                        .name_addr()
+                        .expect("FIXME(eliza): T_T")
+                        .name();
+                    self.suffixes.iter().any(|s| s.contains(auth))
+                };
+                if in_search_suffixes {
+                    Some(addr)
+                } else {
+                    None
+                }
+            }).or_else(|| {
+                let addr = super::http_request_orig_dst_addr(req);
+                debug!("outbound addr={:?}", addr);
+                addr.ok()
+            })
+    }
+}
+
+impl RecognizeAddr {
+    pub fn new(suffixes: Vec<dns::Suffix>) -> Self {
+        Self {
+            suffixes: Arc::new(suffixes),
+        }
     }
 }
 

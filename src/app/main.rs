@@ -350,7 +350,7 @@ where
         let (resolver, resolver_bg) = control::destination::new(
             dst_svc.clone(),
             dns_resolver.clone(),
-            config.destination_get_suffixes,
+            config.destination_get_suffixes.clone(), // FIXME(eliza): get rid of this instead.
             config.destination_concurrency_limit,
             config.destination_context.clone(),
         );
@@ -417,6 +417,7 @@ where
                 discovery::Resolve,
                 orig_proto_upgrade,
                 Endpoint,
+                RecognizeAddr,
             };
             use proxy::{
                 canonicalize,
@@ -430,6 +431,7 @@ where
             let endpoint_http_metrics = endpoint_http_metrics.clone();
             let route_http_metrics = route_http_metrics.clone();
             let profile_suffixes = config.destination_profile_suffixes.clone();
+            let get_suffixes = config.destination_get_suffixes;
             let canonicalize_timeout = config.dns_canonicalize_timeout;
 
             // Establishes connections to remote peers (for both TCP
@@ -561,21 +563,7 @@ where
                 .push(limit::layer(MAX_IN_FLIGHT))
                 .push(strip_header::request::layer(super::L5D_CLIENT_ID))
                 .push(strip_header::request::layer(super::DST_OVERRIDE_HEADER))
-                .push(router::layer(|req: &http::Request<_>| {
-                    super::http_request_l5d_override_dst_addr(req)
-                        .map(|override_addr| {
-                            debug!("outbound addr={:?}; dst-override", override_addr);
-                            override_addr
-                        })
-                        .or_else(|_| {
-                            let addr = super::http_request_authority_addr(req)
-                                .or_else(|_| super::http_request_host_addr(req))
-                                .or_else(|_| super::http_request_orig_dst_addr(req));
-                            debug!("outbound addr={:?}", addr);
-                            addr
-                        })
-                        .ok()
-                }))
+                .push(router::layer(RecognizeAddr::new(get_suffixes)))
                 .make(&router::Config::new("out addr", capacity, max_idle_age))
                 .map(shared::stack)
                 .expect("outbound addr router")
