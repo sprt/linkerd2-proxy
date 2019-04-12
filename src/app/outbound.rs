@@ -137,8 +137,7 @@ impl<B> Recognize<http::Request<B>> for RecognizeAddr {
             .and_then(|addr| {
                 let in_search_suffixes = {
                     let auth = addr
-                        .name_addr()
-                        .expect("FIXME(eliza): T_T")
+                        .name_addr()?
                         .name();
                     self.suffixes.iter().any(|s| s.contains(auth))
                 };
