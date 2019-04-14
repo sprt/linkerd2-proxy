@@ -1,0 +1,60 @@
+1. Push a new layer
+2. That layer is a tls::Client
+3. The layer takes a single argument: l: tls::Conditional<L>
+4. We now have a struct Layer<L>(tls::Conditional<L>)
+5. Layer is wrapping the fact that we have a struct of Conditional<L>
+6. The Conditional<L> tells us we conditionally are TLS'd
+
+HasPeerIdenity comes up in:
+- src::app::control::Target
+- src::app::inbound::Endpoint
+
+* trait HasConfig doesn't need to prefix methods with `tls_`
+* Conditional is not necessarily the status of TLS
+    * perhaps IdentityStatus, Identity,
+* TlsState could just be called Identities because it encapsulates both the
+Client and Server identities
+
+Local {
+    trust_anchors: TurstAnchors,
+    name: Name,
+    crt_key: Watch<Option<CrtKey>>
+}
+
+identity has both the `Local` identity as well as the Watch::Store
+
+Then we make four listeners: controller, admin, outbound, and inbound
+
+We run by building the proxy parts and draining the receive channel. We
+`and_then` the shutdown signal so that when it resovles, we shutdown.
+
+----- src/identity/mod.rs -----
+
+An endpoint's identity
+`pub struct Name(Arc<dns::Name>);`
+
+----- src/transport/tls/mod.rs -----
+
+Does it make sense to use 'client' instead of 'peer'?
+
+----- src/transport/tls/listen.rs -----
+
+Listen {
+    ..
+    tls_status: tls::Conditional<L>,
+    ..
+}
+
+:274 calls it `client_identity`. Perhaps `peer_identity` would be better?
+    * No
+
+"Client" and "Server" are just formal names for roles in situations where
+there is a natural asymmetry. Namely, one talks first: that's the "client".
+
+-----
+
+* Change things from peer to client. "Client" and "Server" are formal names
+for the roles, so we should represent connections the same way.
+
+* Lets call it `tls` instead of `tls_status`. `tls` represents an optional,
+and we never imply that in the names of `Option`s.

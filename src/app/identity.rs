@@ -114,6 +114,14 @@ impl Local {
 }
 
 impl tls::client::HasConfig for Local {
+    fn client_identity(&self) -> tls::Identity<Name> {
+        if let Some(ref c) = *self.crt_key.borrow() {
+            return c.client_identity();
+        }
+
+        self.trust_anchors.client_identity()
+    }
+
     fn tls_client_config(&self) -> Arc<tls::client::Config> {
         if let Some(ref c) = *self.crt_key.borrow() {
             return c.tls_client_config();

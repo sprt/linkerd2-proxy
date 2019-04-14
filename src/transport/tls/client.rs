@@ -2,7 +2,7 @@ use futures::{Async, Future, Poll};
 use std::sync::Arc;
 use std::{fmt, io};
 
-use identity;
+use identity::Name;
 use svc;
 use transport::{connect, io::internal::Io, tls, BoxedIo, Connection};
 use Conditional;
@@ -10,6 +10,7 @@ use Conditional;
 pub use super::rustls::ClientConfig as Config;
 
 pub trait HasConfig {
+    fn client_identity(&self) -> tls::Identity<Name>;
     fn tls_client_config(&self) -> Arc<Config>;
 }
 
@@ -25,19 +26,23 @@ pub struct Stack<L, S> {
 #[derive(Clone, Debug)]
 pub struct Connect<L, C> {
     inner: C,
-    tls: tls::Conditional<(identity::Name, L)>,
+    tls: tls::Conditional<(Name, L)>,
 }
 
 /// A socket that is in the process of connecting.
 pub enum ConnectFuture<L, F: Future> {
     Init {
         future: F,
-        tls: tls::Conditional<(identity::Name, L)>,
+        tls: tls::Conditional<(Name, L)>,
     },
     Handshake {
         future: tls::tokio_rustls::Connect<F::Item>,
-        server_name: identity::Name,
+        identities: tls::Conditional<tls::TlsState>,
     },
+    // Handshake {
+    //     future: tls::tokio_rustls::Connect<F::Item>,
+    //     identities: IdentityStatus<Identities>,
+    // },
 }
 
 // === impl Layer ===
@@ -49,7 +54,7 @@ pub fn layer<L: HasConfig + Clone>(l: tls::Conditional<L>) -> Layer<L> {
 impl<T, L, S> svc::Layer<T, T, S> for Layer<L>
 where
     L: HasConfig + fmt::Debug + Clone,
-    T: tls::HasPeerIdentity,
+    T: tls::HasIdentity,
     S: svc::Stack<T> + Clone,
     S::Value: connect::Connect + Clone + Send + Sync + 'static,
     <S::Value as connect::Connect>::Connected: Send + 'static,
@@ -73,7 +78,7 @@ where
 impl<T, L, S> svc::Stack<T> for Stack<L, S>
 where
     L: HasConfig + fmt::Debug + Clone,
-    T: tls::HasPeerIdentity,
+    T: tls::HasIdentity,
     S: svc::Stack<T> + Clone,
     S::Value: connect::Connect + Clone + Send + Sync + 'static,
     <S::Value as connect::Connect>::Connected: Send + 'static,
@@ -85,8 +90,11 @@ where
 
     fn make(&self, target: &T) -> Result<Self::Value, Self::Error> {
         let inner = self.inner.make(&target)?;
-        let server_name = target.peer_identity();
-        let tls = self.local.clone().and_then(|l| server_name.map(|n| (n, l)));
+        let server_identity = target.identity();
+        let tls = self
+            .local
+            .clone()
+            .and_then(|l| server_identity.map(|n| (n, l)));
         Ok(Connect { inner, tls })
     }
 }
@@ -137,10 +145,12 @@ where
                             trace!("initiating TLS to {}", server_name.as_ref());
                             let future = tls::Connector::from(local_tls.tls_client_config())
                                 .connect(server_name.as_dns_name_ref(), io);
-                            ConnectFuture::Handshake {
-                                future,
-                                server_name: server_name.clone(),
-                            }
+                            let identities = tls::TlsState {
+                                server_identity: server_name.clone(),
+                                client_identity: local_tls.client_identity(),
+                            };
+                            let identities = Conditional::Some(identities);
+                            ConnectFuture::Handshake { future, identities }
                         }
                         Conditional::None(why) => {
                             trace!("skipping TLS ({:?})", why);
@@ -148,14 +158,14 @@ where
                         }
                     }
                 }
-                ConnectFuture::Handshake {
-                    future,
-                    server_name,
-                } => {
+                ConnectFuture::Handshake { future, identities } => {
                     let io = try_ready!(future.poll());
                     let io = BoxedIo::new(super::TlsIo::from(io));
-                    trace!("established TLS to {}", server_name.as_ref());
-                    let c = Connection::tls(io, Conditional::Some(server_name.clone()));
+                    // trace!(
+                    //     "established TLS to {}",
+                    //     identities.(|i| i.server_identity.as_ref())
+                    // );
+                    let c = Connection::tls(io, *identities);
                     return Ok(Async::Ready(c));
                 }
             };

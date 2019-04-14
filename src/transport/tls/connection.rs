@@ -3,9 +3,8 @@ use std::net::SocketAddr;
 use std::{cmp, io};
 use tokio::prelude::*;
 
-use identity;
 use transport::io::internal::Io;
-use transport::tls::{ReasonForNoIdentity, ReasonForNoPeerName};
+use transport::tls::{Conditional, ReasonForNoClientIdentity, ReasonForNoTls, TlsState};
 use transport::{AddrInfo, BoxedIo, Peek, SetKeepalive};
 use Conditional;
 
@@ -29,7 +28,7 @@ pub struct Connection {
     peek_buf: BytesMut,
 
     /// Whether or not the connection is secured with TLS.
-    tls_peer_identity: super::PeerIdentity,
+    tls: Conditional<TlsState>,
 
     /// If true, the proxy should attempt to detect the protocol for this
     /// connection. If false, protocol detection should be skipped.
@@ -42,7 +41,7 @@ pub struct Connection {
 // === impl Connection ===
 
 impl Connection {
-    pub(super) fn plain<I: Io + 'static>(io: I, why_no_tls: ReasonForNoIdentity) -> Self {
+    pub(super) fn plain<I: Io + 'static>(io: I, why_no_tls: ReasonForNoTls) -> Self {
         Self::plain_with_peek_buf(io, BytesMut::new(), why_no_tls)
     }
 
@@ -50,8 +49,8 @@ impl Connection {
         Connection {
             io: BoxedIo::new(io),
             peek_buf: BytesMut::new(),
-            tls_peer_identity: Conditional::None(ReasonForNoIdentity::NoPeerName(
-                ReasonForNoPeerName::NotHttp,
+            tls: Conditional::None(ReasonForNoTls::NoClientIdentity(
+                ReasonForNoClientIdentity::NotHttp,
             )),
             detect_protocol: false,
             orig_dst: None,
@@ -61,25 +60,22 @@ impl Connection {
     pub(super) fn plain_with_peek_buf<I: Io + 'static>(
         io: I,
         peek_buf: BytesMut,
-        why_no_tls: ReasonForNoIdentity,
+        why_no_tls: ReasonForNoTls,
     ) -> Self {
         Connection {
             io: BoxedIo::new(io),
             peek_buf,
-            tls_peer_identity: Conditional::None(why_no_tls),
+            tls: Conditional::None(why_no_tls),
             detect_protocol: true,
             orig_dst: None,
         }
     }
 
-    pub(super) fn tls(
-        io: BoxedIo,
-        tls_peer_identity: Conditional<identity::Name, super::ReasonForNoPeerName>,
-    ) -> Self {
+    pub(super) fn tls(io: BoxedIo, tls: Conditional<TlsState>) -> Self {
         Connection {
             io: io,
             peek_buf: BytesMut::new(),
-            tls_peer_identity: tls_peer_identity.map_reason(|r| r.into()),
+            tls,
             detect_protocol: true,
             orig_dst: None,
         }
@@ -102,9 +98,9 @@ impl Connection {
     }
 }
 
-impl super::HasPeerIdentity for Connection {
-    fn peer_identity(&self) -> super::PeerIdentity {
-        self.tls_peer_identity.clone()
+impl super::HasConditional for Connection {
+    fn tls(&self) -> Conditional<TlsState> {
+        self.tls.clone()
     }
 }
 

@@ -285,7 +285,11 @@ impl TrustAnchors {
 }
 
 impl tls::client::HasConfig for TrustAnchors {
-    fn tls_client_config(&self) -> Arc<rustls::ClientConfig> {
+    fn client_identity(&self) -> tls::Identity<Name> {
+        ::Conditional::None(tls::ReasonForNoClientIdentity::NotProvidedByClient)
+    }
+
+    fn tls_client_config(&self) -> Arc<tls::client::Config> {
         self.0.clone()
     }
 }
@@ -315,6 +319,10 @@ impl Crt {
 // === CrtKey ===
 
 impl tls::client::HasConfig for CrtKey {
+    fn client_identity(&self) -> tls::Identity<Name> {
+        ::Conditional::Some(self.name.clone())
+    }
+
     fn tls_client_config(&self) -> Arc<tls::client::Config> {
         self.client_config.clone()
     }
