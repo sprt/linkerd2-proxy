@@ -35,6 +35,7 @@ pub struct Retry {
 pub struct DstAddr {
     addr: Addr,
     direction: Direction,
+    orig_name: Option<NameAddr>,
 }
 
 // === impl Route ===
@@ -110,10 +111,11 @@ impl AsRef<Addr> for DstAddr {
 }
 
 impl DstAddr {
-    pub fn outbound(addr: Addr) -> Self {
+    pub fn outbound(addr: super::outbound::WithDst) -> Self {
         DstAddr {
-            addr,
+            addr: addr.addr,
             direction: Direction::Out,
+            orig_name: addr.name,
         }
     }
 
@@ -121,6 +123,7 @@ impl DstAddr {
         DstAddr {
             addr,
             direction: Direction::In,
+            orig_name: None,
         }
     }
 
@@ -143,7 +146,7 @@ impl fmt::Display for DstAddr {
 
 impl profiles::CanGetDestination for DstAddr {
     fn get_destination(&self) -> Option<&NameAddr> {
-        self.addr.name_addr()
+        self.addr.name_addr().or_else(|| self.orig_name.as_ref())
     }
 }
 

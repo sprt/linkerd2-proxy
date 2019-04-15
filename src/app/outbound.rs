@@ -25,6 +25,12 @@ pub struct RecognizeAddr {
     suffixes: Arc<Vec<dns::Suffix>>,
 }
 
+#[derive(Clone, Hash, Eq, PartialEq, Debug)]
+pub struct WithDst {
+    pub(in app) addr: Addr,
+    pub(in app) name: Option<NameAddr>,
+}
+
 // === impl Endpoint ===
 
 impl Endpoint {
@@ -117,7 +123,7 @@ impl tap::Inspect for Endpoint {
 // === impl RecognizeAddr ===
 
 impl<B> Recognize<http::Request<B>> for RecognizeAddr {
-    type Target = Addr;
+    type Target = WithDst;
 
     fn recognize(&self, req: &http::Request<B>) -> Option<Self::Target> {
         // FIXME(eliza): this is pretty gross but i wanted to get the same
@@ -132,16 +138,22 @@ impl<B> Recognize<http::Request<B>> for RecognizeAddr {
                     .or_else(|_| super::http_request_host_addr(req))
             })
             .and_then(|addr| {
-                let in_search_suffixes = addr
-                    .name_addr().map(|auth| {
+                let in_search_suffixes = addr.name_addr().map(|auth| {
                         let auth = auth.name();
                         self.suffixes.iter().any(|s| s.contains(auth))
                     }).unwrap_or(false);
                 if in_search_suffixes {
-                    Ok(addr)
+                    Ok(WithDst {
+                        addr,
+                        name: None,
+                    })
                 } else {
-                    let orig_dst = super::http_request_orig_dst_addr(req)?;
-                    Ok(orig_dst.with_name(addr))
+                    let name = addr.into_name_addr();
+                    let addr = super::http_request_orig_dst_addr(req)?;
+                    Ok(WithDst {
+                        addr,
+                        name,
+                    })
                 }
             });
         debug!("outbound addr={:?}", addr);
@@ -153,6 +165,32 @@ impl RecognizeAddr {
     pub fn new(suffixes: Vec<dns::Suffix>) -> Self {
         Self {
             suffixes: Arc::new(suffixes),
+        }
+    }
+}
+
+// === impl WithDst ===
+
+impl From<NameAddr> for WithDst {
+    fn from(addr: NameAddr) -> Self {
+        Self {
+            addr: addr.into(),
+            name: None,
+        }
+    }
+}
+
+impl<'a> Into<&'a Addr> for &'a WithDst {
+    fn into(self) -> &'a Addr  {
+        &self.addr
+    }
+}
+
+impl fmt::Display for WithDst {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self.name {
+            Some(ref name) => write!(f, "{} ({})", self.addr, name),
+            _ => self.addr.fmt(f),
         }
     }
 }
@@ -198,7 +236,7 @@ pub mod discovery {
         fn resolve(&self, dst: &DstAddr) -> Self::Resolution {
             match dst.as_ref() {
                 Addr::Name(ref name) => Resolution::Name(name.clone(), self.0.resolve(&name)),
-                Addr::Socket(ref socket) | Addr::SocketWithName { ref socket, ..} => Resolution::Addr(Some(*socket)),
+                Addr::Socket(ref socket) => Resolution::Addr(Some(*socket)),
             }
         }
     }

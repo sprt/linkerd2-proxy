@@ -413,6 +413,7 @@ where
 
         let outbound = {
             use super::outbound::{
+                self,
                 //add_remote_ip_on_rsp, add_server_id_on_rsp,
                 discovery::Resolve,
                 orig_proto_upgrade,
@@ -541,7 +542,7 @@ where
             // routed by the dst_router.
             let addr_stack = dst_router
                 .push(insert_target::layer())
-                .push(map_target::layer(|addr: &Addr| {
+                .push(map_target::layer(|addr: &outbound::WithDst| {
                     DstAddr::outbound(addr.clone())
                 }))
                 .push(canonicalize::layer(dns_resolver, canonicalize_timeout));

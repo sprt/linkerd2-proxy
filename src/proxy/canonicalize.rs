@@ -31,13 +31,13 @@ pub struct Layer {
 }
 
 #[derive(Clone, Debug)]
-pub struct Stack<M: svc::Stack<Addr>> {
+pub struct Stack<M> {
     resolver: dns::Resolver,
     inner: M,
     timeout: Duration,
 }
 
-pub struct Service<M: svc::Stack<Addr>> {
+pub struct Service<M: svc::Stack<A>, A> {
     rx: mpsc::Receiver<NameAddr>,
     stack: M,
     service: Option<M::Value>,
@@ -80,12 +80,14 @@ pub fn layer(resolver: dns::Resolver, timeout: Duration) -> Layer {
     Layer { resolver, timeout }
 }
 
-impl<M> svc::Layer<Addr, Addr, M> for Layer
+impl<M, A> svc::Layer<A, A, M> for Layer
 where
-    M: svc::Stack<Addr> + Clone,
+    M: svc::Stack<A> + Clone,
+    for<'a> &'a A: Into<&'a Addr>,
+    A: From<NameAddr>,
 {
-    type Value = <Stack<M> as svc::Stack<Addr>>::Value;
-    type Error = <Stack<M> as svc::Stack<Addr>>::Error;
+    type Value = <Stack<M> as svc::Stack<A>>::Value;
+    type Error = <Stack<M> as svc::Stack<A>>::Error;
     type Stack = Stack<M>;
 
     fn bind(&self, inner: M) -> Self::Stack {
@@ -99,15 +101,17 @@ where
 
 // === impl Stack ===
 
-impl<M> svc::Stack<Addr> for Stack<M>
+impl<M, A> svc::Stack<A> for Stack<M>
 where
-    M: svc::Stack<Addr> + Clone,
+    M: svc::Stack<A> + Clone,
+    for<'a> &'a A: Into<&'a Addr>,
+    A: From<NameAddr>,
 {
-    type Value = svc::Either<Service<M>, M::Value>;
+    type Value = svc::Either<Service<M, A>, M::Value>;
     type Error = M::Error;
 
-    fn make(&self, addr: &Addr) -> Result<Self::Value, Self::Error> {
-        match addr {
+    fn make(&self, addr: &A) -> Result<Self::Value, Self::Error> {
+        match addr.into() {
             Addr::Name(na) => {
                 let (tx, rx) = mpsc::channel(2);
 
@@ -127,7 +131,7 @@ where
                 };
                 Ok(svc::Either::A(svc))
             }
-            Addr::Socket(_) | Addr::SocketWithName {..} => self.inner.make(&addr).map(svc::Either::B),
+            Addr::Socket(_) | Addr::SocketWithName {..} => self.inner.make(addr).map(svc::Either::B),
         }
     }
 }
@@ -250,12 +254,13 @@ impl Cache {
 
 // === impl Service ===
 
-impl<M, Req, Svc> svc::Service<Req> for Service<M>
+impl<M, Req, Svc, A> svc::Service<Req> for Service<M, A>
 where
-    M: svc::Stack<Addr, Value = Svc>,
+    M: svc::Stack<A, Value = Svc>,
     M::Error: Into<Error>,
     Svc: svc::Service<Req>,
     Svc::Error: Into<Error>,
+    A: From<NameAddr>,
 {
     type Response = <M::Value as svc::Service<Req>>::Response;
     type Error = Error;

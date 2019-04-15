@@ -217,7 +217,7 @@ pub mod resolve {
 
         fn call(&mut self, _target: ()) -> Self::Future {
             let state = match self.config.addr {
-                Addr::Socket(sa) | Addr::SocketWithName { socket: sa, ..}=> State::make_inner(sa, &self.config, &self.stack),
+                Addr::Socket(sa) => State::make_inner(sa, &self.config, &self.stack),
                 Addr::Name(ref na) => State::Resolve {
                     future: self.dns.resolve_one_ip(na.name()),
                     stack: self.stack.clone(),
