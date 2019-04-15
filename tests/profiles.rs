@@ -24,6 +24,16 @@ macro_rules! profile_test {
         }
     };
     (http: $http:ident, routes: [$($route:expr),+], budget: $budget:expr, with_client: $with_client:expr, with_metrics: $with_metrics:expr) => {
+        profile_test! {
+            http: http1,
+            routes: [$($route),+],
+            budget: $budget,
+            with_client: $with_client,
+            with_metrics: $with_metrics,
+            with_env: app::config::TestEnv::new()
+        }
+    };
+    (http: $http:ident, routes: [$($route:expr),+], budget: $budget:expr, with_client: $with_client:expr, with_metrics: $with_metrics:expr, with_env: $env:expr) => {
         let _ = env_logger_init();
 
         let counter = AtomicUsize::new(0);
@@ -110,7 +120,7 @@ macro_rules! profile_test {
         let proxy = proxy::new()
             .controller(ctrl)
             .outbound(srv)
-            .run();
+            .run_with_test_env($env);
 
         let client = client::$http(proxy.outbound, host);
 
@@ -125,6 +135,7 @@ macro_rules! profile_test {
             }
 
             ::std::thread::sleep(::std::time::Duration::from_millis(200));
+            println!("did not load profile");
         }
 
         $with_client(client);
@@ -148,6 +159,27 @@ fn retry_if_profile_allows() {
         }
     }
 }
+
+#[test]
+fn retry_if_profile_allows_outside_of_dst_search() {
+    let mut env = app::config::TestEnv::new();
+    env.put(app::config::ENV_DESTINATION_GET_SUFFIXES, "".to_owned());
+    profile_test! {
+        http: http1,
+        routes: [
+            controller::route()
+                .request_any()
+                // use default classifier
+                .retryable(true)
+        ],
+        budget: Some(controller::retry_budget(Duration::from_secs(10), 0.1, 1)),
+        with_client: |client: client::Client| {
+            assert_eq!(client.get("/0.5"), "retried");
+        },
+        with_metrics: |_m| {}, with_env: env
+    }
+}
+
 
 #[test]
 fn retry_uses_budget() {
