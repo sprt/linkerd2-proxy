@@ -10,7 +10,7 @@ use Conditional;
 pub use super::rustls::ClientConfig as Config;
 
 pub trait HasConfig {
-    fn client_identity(&self) -> tls::Identity<Name>;
+    fn client_identity(&self) -> Option<tls::Identity<Name>>;
     fn tls_client_config(&self) -> Arc<Config>;
 }
 

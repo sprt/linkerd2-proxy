@@ -32,7 +32,7 @@ impl From<SocketAddr> for Endpoint {
         Self {
             addr,
             dst_name: None,
-            tls_client_id: Conditional::None(tls::ReasonForNoPeerName::NotHttp.into()),
+            tls_client_id: Conditional::None(tls::ReasonForNoClientIdentity::NotHttp.into()),
         }
     }
 }
@@ -45,7 +45,7 @@ impl connect::HasPeerAddr for Endpoint {
 
 impl tls::HasPeerIdentity for Endpoint {
     fn peer_identity(&self) -> tls::PeerIdentity {
-        Conditional::None(tls::ReasonForNoPeerName::Loopback.into())
+        Conditional::None(tls::ReasonForNoClientIdentity::Loopback.into())
     }
 }
 
@@ -68,7 +68,7 @@ impl tap::Inspect for Endpoint {
     ) -> Conditional<&'a identity::Name, tls::ReasonForNoIdentity> {
         req.extensions()
             .get::<Source>()
-            .map(|s| s.tls_peer.as_ref())
+            .map(|s| s.client.as_ref())
             .unwrap_or_else(|| Conditional::None(tls::ReasonForNoIdentity::Disabled))
     }
 
@@ -123,7 +123,7 @@ impl<A> router::Recognize<http::Request<A>> for RecognizeEndpoint {
             .or(self.default_addr)?;
 
         let tls_client_id = src
-            .map(|s| s.tls_peer.clone())
+            .map(|s| s.client.clone())
             .unwrap_or_else(|| Conditional::None(tls::ReasonForNoIdentity::Disabled));
 
         let dst_name = req
@@ -287,7 +287,7 @@ pub mod set_client_id_on_req {
 
     pub fn layer() -> Layer<&'static str, Source, ReqHeader> {
         add_header::request::layer(L5D_CLIENT_ID, |source: &Source| {
-            if let Conditional::Some(ref id) = source.tls_peer {
+            if let Conditional::Some(ref id) = source.client {
                 match HeaderValue::from_str(id.as_ref()) {
                     Ok(value) => {
                         debug!("l5d-client-id enabled for {:?}", source);

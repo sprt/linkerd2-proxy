@@ -9,7 +9,7 @@ use api::identity as api;
 use never::Never;
 
 pub use identity::{Crt, CrtKey, Csr, InvalidName, Key, Name, TokenSource, TrustAnchors};
-use transport::tls;
+use transport::tls::{self, Identity};
 
 /// Configures the Identity service and local identity.
 #[derive(Clone, Debug)]
@@ -114,7 +114,7 @@ impl Local {
 }
 
 impl tls::client::HasConfig for Local {
-    fn client_identity(&self) -> tls::Identity<Name> {
+    fn client_identity(&self) -> Option<Identity<Name>> {
         if let Some(ref c) = *self.crt_key.borrow() {
             return c.client_identity();
         }

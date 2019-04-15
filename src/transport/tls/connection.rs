@@ -3,8 +3,9 @@ use std::net::SocketAddr;
 use std::{cmp, io};
 use tokio::prelude::*;
 
+use identity::Name;
 use transport::io::internal::Io;
-use transport::tls::{Conditional, ReasonForNoClientIdentity, ReasonForNoTls, TlsState};
+use transport::tls::{self, Identity, ReasonForNoClientIdentity, ReasonForNoTls, TlsState};
 use transport::{AddrInfo, BoxedIo, Peek, SetKeepalive};
 use Conditional;
 
@@ -28,7 +29,7 @@ pub struct Connection {
     peek_buf: BytesMut,
 
     /// Whether or not the connection is secured with TLS.
-    tls: Conditional<TlsState>,
+    tls: tls::Conditional<TlsState>,
 
     /// If true, the proxy should attempt to detect the protocol for this
     /// connection. If false, protocol detection should be skipped.
@@ -71,7 +72,7 @@ impl Connection {
         }
     }
 
-    pub(super) fn tls(io: BoxedIo, tls: Conditional<TlsState>) -> Self {
+    pub(super) fn tls(io: BoxedIo, tls: tls::Conditional<TlsState>) -> Self {
         Connection {
             io: io,
             peek_buf: BytesMut::new(),
@@ -98,8 +99,14 @@ impl Connection {
     }
 }
 
+// impl super::HasIdentity for Connection {
+//     fn identity(&self) -> tls::Conditional<Identity<Name>> {
+//         self.tls.map(|tls| tls.client_identity())
+//     }
+// }
+
 impl super::HasConditional for Connection {
-    fn tls(&self) -> Conditional<TlsState> {
+    fn tls(&self) -> tls::Conditional<TlsState> {
         self.tls.clone()
     }
 }

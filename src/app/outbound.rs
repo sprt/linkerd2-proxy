@@ -13,7 +13,7 @@ use {Conditional, NameAddr};
 pub struct Endpoint {
     pub dst_name: Option<NameAddr>,
     pub addr: SocketAddr,
-    pub identity: tls::PeerIdentity,
+    pub identity: tls::Conditional<tls::Identity<identity::Name>>,
     pub metadata: Metadata,
 }
 
@@ -33,7 +33,7 @@ impl From<SocketAddr> for Endpoint {
         Self {
             addr,
             dst_name: None,
-            identity: Conditional::None(tls::ReasonForNoPeerName::NotHttp.into()),
+            identity: Conditional::None(tls::ReasonForNoClientIdentity::NotHttp.into()),
             metadata: Metadata::empty(),
         }
     }
@@ -55,7 +55,7 @@ impl hash::Hash for Endpoint {
 }
 
 impl tls::HasPeerIdentity for Endpoint {
-    fn peer_identity(&self) -> tls::PeerIdentity {
+    fn peer_identity(&self) -> tls::Conditional<tls::Identity<identity::Name>> {
         self.identity.clone()
     }
 }
@@ -91,7 +91,7 @@ impl tap::Inspect for Endpoint {
     fn dst_tls<B>(
         &self,
         _: &http::Request<B>,
-    ) -> Conditional<&identity::Name, tls::ReasonForNoIdentity> {
+    ) -> Conditional<&identity::Name, tls::ReasonForNoTls> {
         self.identity.as_ref()
     }
 
@@ -175,7 +175,8 @@ pub mod discovery {
                             .map(Conditional::Some)
                             .unwrap_or_else(|| {
                                 Conditional::None(
-                                    tls::ReasonForNoPeerName::NotProvidedByServiceDiscovery.into(),
+                                    tls::ReasonForNoClientIdentity::NotProvidedByServiceDiscovery
+                                        .into(),
                                 )
                             });
                         debug!("adding addr={}; identity={:?}", addr, identity);
@@ -194,7 +195,7 @@ pub mod discovery {
                             dst_name: None,
                             addr,
                             identity: Conditional::None(
-                                tls::ReasonForNoPeerName::NoAuthorityInHttpRequest.into(),
+                                tls::ReasonForNoClientIdentity::NoAuthorityInHttpRequest.into(),
                             ),
                             metadata: Metadata::empty(),
                         };

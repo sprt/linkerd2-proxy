@@ -93,7 +93,7 @@ where
 
         let outbound_listener = Listen::bind(
             config.outbound_listener.addr,
-            Conditional::None(tls::ReasonForNoPeerName::Loopback.into()),
+            Conditional::None(tls::ReasonForNoClientIdentity::Loopback.into()),
         )
         .expect("outbound listener bind")
         .with_original_dst(get_original_dst.clone())

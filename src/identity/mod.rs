@@ -14,7 +14,7 @@ pub use self::ring::error::KeyRejected;
 
 use convert::TryFrom;
 use dns;
-use transport::tls;
+use transport::tls::{self, Identity};
 
 #[cfg(test)]
 pub mod test_util;
@@ -285,7 +285,7 @@ impl TrustAnchors {
 }
 
 impl tls::client::HasConfig for TrustAnchors {
-    fn client_identity(&self) -> tls::Identity<Name> {
+    fn client_identity(&self) -> Option<Identity<Name>> {
         ::Conditional::None(tls::ReasonForNoClientIdentity::NotProvidedByClient)
     }
 
@@ -319,7 +319,7 @@ impl Crt {
 // === CrtKey ===
 
 impl tls::client::HasConfig for CrtKey {
-    fn client_identity(&self) -> tls::Identity<Name> {
+    fn client_identity(&self) -> Option<Identity<Name>> {
         ::Conditional::Some(self.name.clone())
     }
 

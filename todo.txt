@@ -15,6 +15,9 @@ HasPeerIdenity comes up in:
 * TlsState could just be called Identities because it encapsulates both the
 Client and Server identities
 
+* What if TlsState just had traits like `fn server_identity` and
+`fn client_identity`
+
 Local {
     trust_anchors: TurstAnchors,
     name: Name,

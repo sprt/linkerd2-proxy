@@ -7,7 +7,7 @@ extern crate webpki;
 use self::tokio_rustls::{Accept, TlsAcceptor as Acceptor, TlsConnector as Connector};
 use std::fmt;
 
-use identity;
+use identity::{self, Name};
 
 pub mod client;
 mod conditional_accept;
@@ -169,8 +169,14 @@ impl From<ReasonForNoClientIdentity> for ReasonForNoTls {
 
 #[derive(Clone, Debug)]
 pub struct TlsState {
-    server_identity: identity::Name,
-    client_identity: Identity<identity::Name>,
+    server_identity: Name,
+    client_identity: Identity<Name>,
+}
+
+impl TlsState {
+    pub fn client_identity(&self) -> Identity<Name> {
+        self.client_identity
+    }
 }
 
 // ===== impl ReasonForNoTls =====

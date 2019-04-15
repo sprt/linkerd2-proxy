@@ -204,7 +204,7 @@ impl fmt::Display for classify::SuccessOrFailure {
 impl FmtLabels for tls::Status {
     fn fmt_labels(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Conditional::None(tls::ReasonForNoIdentity::NoPeerName(why)) => {
+            Conditional::None(tls::ReasonForNoClientIdentity::NoPeerName(why)) => {
                 write!(f, "tls=\"no_identity\",no_tls_reason=\"{}\"", why)
             }
             status => write!(f, "tls=\"{}\"", status),

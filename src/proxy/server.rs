@@ -8,6 +8,7 @@ use std::{error, fmt};
 use super::Accept;
 use app::config::H2Settings;
 use drain;
+use identity::Name;
 use never::Never;
 use proxy::http::{
     glue::{HttpBody, HyperServerSvc},
@@ -18,7 +19,7 @@ use proxy::tcp;
 use svc::{Service, Stack};
 use transport::{
     connect,
-    tls::{self, HasPeerIdentity},
+    tls::{self, Conditional, HasConditional, HasPeerIdentity, Identity},
     Connection, Peek,
 };
 
@@ -76,7 +77,7 @@ pub struct Source {
     pub remote: SocketAddr,
     pub local: SocketAddr,
     pub orig_dst: Option<SocketAddr>,
-    pub tls_peer: tls::PeerIdentity,
+    pub client: Conditional<Identity<Name>>,
     _p: (),
 }
 
@@ -125,13 +126,13 @@ impl Source {
         remote: SocketAddr,
         local: SocketAddr,
         orig_dst: Option<SocketAddr>,
-        tls_peer: tls::PeerIdentity,
+        client: Conditional<Identity<Name>>,
     ) -> Self {
         Self {
             remote,
             local,
             orig_dst,
-            tls_peer,
+            client,
             _p: (),
         }
     }
@@ -259,7 +260,7 @@ where
             remote: remote_addr,
             local: connection.local_addr().unwrap_or(self.listen_addr),
             orig_dst,
-            tls_peer: connection.peer_identity(),
+            client: connection.tls().map(|tls| tls.client_identity()),
             _p: (),
         };
 

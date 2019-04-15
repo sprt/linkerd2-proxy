@@ -494,7 +494,7 @@ impl Config {
 
             identity_config: identity_config?
                 .map(Conditional::Some)
-                .unwrap_or_else(|| Conditional::None(tls::ReasonForNoIdentity::Disabled)),
+                .unwrap_or_else(|| Conditional::None(tls::ReasonForNoTls::Disabled)),
 
             resolv_conf_path: resolv_conf_path?
                 .unwrap_or(DEFAULT_RESOLV_CONF.into())
@@ -698,7 +698,7 @@ pub fn parse_control_addr<S: Strings>(
         (None, None) => Ok(None),
         (Some(ref addr), _) if addr.is_loopback() => Ok(Some(ControlAddr {
             addr: addr.clone(),
-            identity: Conditional::None(tls::ReasonForNoPeerName::Loopback.into()),
+            identity: Conditional::None(tls::ReasonForNoClientIdentity::Loopback.into()),
         })),
         (Some(addr), Some(name)) => Ok(Some(ControlAddr {
             addr,
@@ -720,7 +720,7 @@ pub fn parse_control_addr_disable_identity<S: Strings>(
     base: &str,
 ) -> Result<Option<ControlAddr>, Error> {
     let a = parse(strings, &format!("{}_ADDR", base), parse_addr)?;
-    let identity = Conditional::None(tls::ReasonForNoIdentity::Disabled);
+    let identity = Conditional::None(tls::ReasonForNoTls::Disabled);
     Ok(a.map(|addr| ControlAddr { addr, identity }))
 }
 
