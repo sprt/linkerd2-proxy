@@ -122,35 +122,30 @@ impl<B> Recognize<http::Request<B>> for RecognizeAddr {
     fn recognize(&self, req: &http::Request<B>) -> Option<Self::Target> {
         // FIXME(eliza): this is pretty gross but i wanted to get the same
         // logging we did previously...
-        super::http_request_l5d_override_dst_addr(req)
+        let addr = super::http_request_l5d_override_dst_addr(req)
             .map(|override_addr| {
                 debug!("outbound addr={:?}; dst-override", override_addr);
                 override_addr
             })
             .or_else(|_| {
-                let addr = super::http_request_authority_addr(req)
-                    .or_else(|_| super::http_request_host_addr(req));
-                debug!("outbound addr={:?}", addr);
-                addr
+                super::http_request_authority_addr(req)
+                    .or_else(|_| super::http_request_host_addr(req))
             })
-            .ok()
             .and_then(|addr| {
-                let in_search_suffixes = {
-                    let auth = addr
-                        .name_addr()?
-                        .name();
-                    self.suffixes.iter().any(|s| s.contains(auth))
-                };
+                let in_search_suffixes = addr
+                    .name_addr().map(|auth| {
+                        let auth = auth.name();
+                        self.suffixes.iter().any(|s| s.contains(auth))
+                    }).unwrap_or(false);
                 if in_search_suffixes {
-                    Some(addr)
+                    Ok(addr)
                 } else {
-                    None
+                    let orig_dst = super::http_request_orig_dst_addr(req)?;
+                    Ok(orig_dst.with_name(addr))
                 }
-            }).or_else(|| {
-                let addr = super::http_request_orig_dst_addr(req);
-                debug!("outbound addr={:?}", addr);
-                addr.ok()
-            })
+            });
+        debug!("outbound addr={:?}", addr);
+        addr.ok()
     }
 }
 
@@ -203,7 +198,7 @@ pub mod discovery {
         fn resolve(&self, dst: &DstAddr) -> Self::Resolution {
             match dst.as_ref() {
                 Addr::Name(ref name) => Resolution::Name(name.clone(), self.0.resolve(&name)),
-                Addr::Socket(ref addr) => Resolution::Addr(Some(*addr)),
+                Addr::Socket(ref socket) | Addr::SocketWithName { ref socket, ..} => Resolution::Addr(Some(*socket)),
             }
         }
     }

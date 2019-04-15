@@ -10,6 +10,7 @@ pub use dns::Name;
 pub enum Addr {
     Name(NameAddr),
     Socket(SocketAddr),
+    SocketWithName { socket: SocketAddr, name: NameAddr }
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -63,6 +64,8 @@ impl Addr {
         match self {
             Addr::Name(n) => n.port(),
             Addr::Socket(a) => a.port(),
+
+            Addr::SocketWithName { socket, .. } => socket.port(),
         }
     }
 
@@ -70,6 +73,7 @@ impl Addr {
         match self {
             Addr::Name(n) => n.is_localhost(),
             Addr::Socket(a) => a.ip().is_loopback(),
+            Addr::SocketWithName { socket, .. } => socket.ip().is_loopback(),
         }
     }
 
@@ -78,12 +82,14 @@ impl Addr {
             Addr::Name(n) => n.as_authority(),
             Addr::Socket(a) => http::uri::Authority::from_str(&format!("{}", a))
                 .expect("SocketAddr must be valid authority"),
+            Addr::SocketWithName { ref name, .. } => name.as_authority(), // XXX: is this right?
         }
     }
 
     pub fn socket_addr(&self) -> Option<SocketAddr> {
         match self {
             Addr::Socket(a) => Some(*a),
+            Addr::SocketWithName { socket, .. } => Some(*socket),
             Addr::Name(_) => None,
         }
     }
@@ -91,6 +97,7 @@ impl Addr {
     pub fn name_addr(&self) -> Option<&NameAddr> {
         match self {
             Addr::Name(ref n) => Some(n),
+            Addr::SocketWithName { ref name, .. } => Some(name),
             Addr::Socket(_) => None,
         }
     }
@@ -98,7 +105,15 @@ impl Addr {
     pub fn into_name_addr(self) -> Option<NameAddr> {
         match self {
             Addr::Name(n) => Some(n),
-            Addr::Socket(_) => None,
+            Addr::SocketWithName { name, .. } => Some(name),
+            _ => None,
+        }
+    }
+
+    pub fn with_name(self, name: Addr) -> Self {
+        match (self.socket_addr(), name.into_name_addr()) {
+            (_, None) | (None, Some(_)) => self,
+            (Some(socket), Some(name)) => Addr::SocketWithName { socket, name },
         }
     }
 }
@@ -108,6 +123,7 @@ impl fmt::Display for Addr {
         match self {
             Addr::Name(name) => name.fmt(f),
             Addr::Socket(addr) => addr.fmt(f),
+            Addr::SocketWithName { socket, name } => write!(f, "{} ({})", socket, name)
         }
     }
 }

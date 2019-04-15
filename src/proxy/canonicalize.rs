@@ -127,7 +127,7 @@ where
                 };
                 Ok(svc::Either::A(svc))
             }
-            Addr::Socket(_) => self.inner.make(&addr).map(svc::Either::B),
+            Addr::Socket(_) | Addr::SocketWithName {..} => self.inner.make(&addr).map(svc::Either::B),
         }
     }
 }
