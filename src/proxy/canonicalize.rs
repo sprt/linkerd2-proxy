@@ -10,7 +10,7 @@
 //! rebuilt with the updated value.
 
 use futures::{future, sync::mpsc, Async, Future, Poll, Stream};
-use std::time::Duration;
+use std::{fmt, time::Duration};
 use tokio::executor::{DefaultExecutor, Executor};
 use tokio_timer::{clock, Delay, Timeout};
 
@@ -37,24 +37,45 @@ pub struct Stack<M> {
     timeout: Duration,
 }
 
-pub struct Service<M: svc::Stack<A>, A> {
-    rx: mpsc::Receiver<NameAddr>,
+/// Trait implemented by types that can be refined into a canonical FQDN.
+pub trait Canonicalize {
+    /// If this is a name that should be canonicalized, returns the original
+    /// unrefined name. Otherwise, if this name should not be canonicalized
+    /// (i.e., it's a socket address rather than a DNS name), returns `None`.
+    fn uncanonical_name(&self) -> Option<&dns::Name>;
+
+    /// Transforms `self` into canonical form with the provided `canonical`
+    /// FQDN.
+    ///
+    // If `self` does not hold a canonicalizable name (i.e. it is a
+    /// socket address), this should simply clone `self` and ignore the
+    /// canonical name.
+    fn with_canonical(&self, canonical: dns::Name) -> Self;
+
+    /// Returns true if `self` should be canonicalized.
+    fn should_canonicalize(&self) -> bool {
+        self.uncanonical_name().is_some()
+    }
+}
+
+pub struct Service<M: svc::Stack<N>, N> {
+    rx: mpsc::Receiver<N>,
     stack: M,
     service: Option<M::Value>,
 }
 
-struct Task {
-    original: NameAddr,
-    resolved: Cache,
+struct Task<N> {
+    original: N,
+    resolved: Cache<N>,
     resolver: dns::Resolver,
     state: State,
     timeout: Duration,
-    tx: mpsc::Sender<NameAddr>,
+    tx: mpsc::Sender<N>,
 }
 
 /// Tracks the state of the last resolution.
 #[derive(Debug, Clone, Eq, PartialEq)]
-enum Cache {
+enum Cache<N> {
     /// The service has not yet been notified of a value.
     AwaitingInitial,
 
@@ -63,7 +84,7 @@ enum Cache {
     Unresolved,
 
     /// The service was last-notified with this name.
-    Resolved(NameAddr),
+    Resolved(N),
 }
 
 enum State {
@@ -80,14 +101,13 @@ pub fn layer(resolver: dns::Resolver, timeout: Duration) -> Layer {
     Layer { resolver, timeout }
 }
 
-impl<M, A> svc::Layer<A, A, M> for Layer
+impl<M, N> svc::Layer<N, N, M> for Layer
 where
-    M: svc::Stack<A> + Clone,
-    for<'a> &'a A: Into<&'a Addr>,
-    A: From<NameAddr>,
+    M: svc::Stack<N> + Clone,
+    N: Canonicalize + Clone + Eq + fmt::Display + fmt::Debug + Send + 'static,
 {
-    type Value = <Stack<M> as svc::Stack<A>>::Value;
-    type Error = <Stack<M> as svc::Stack<A>>::Error;
+    type Value = <Stack<M> as svc::Stack<N>>::Value;
+    type Error = <Stack<M> as svc::Stack<N>>::Error;
     type Stack = Stack<M>;
 
     fn bind(&self, inner: M) -> Self::Stack {
@@ -101,49 +121,50 @@ where
 
 // === impl Stack ===
 
-impl<M, A> svc::Stack<A> for Stack<M>
+impl<M, N> svc::Stack<N> for Stack<M>
 where
-    M: svc::Stack<A> + Clone,
-    for<'a> &'a A: Into<&'a Addr>,
-    A: From<NameAddr>,
+    M: svc::Stack<N> + Clone,
+    N: Canonicalize + Clone + Eq + fmt::Display + fmt::Debug + Send + 'static,
 {
-    type Value = svc::Either<Service<M, A>, M::Value>;
+    type Value = svc::Either<Service<M, N>, M::Value>;
     type Error = M::Error;
 
-    fn make(&self, addr: &A) -> Result<Self::Value, Self::Error> {
-        match addr.into() {
-            Addr::Name(na) => {
-                let (tx, rx) = mpsc::channel(2);
+    fn make(&self, name: &N) -> Result<Self::Value, Self::Error> {
+        if name.should_canonicalize() {
+            let (tx, rx) = mpsc::channel(2);
 
-                DefaultExecutor::current()
-                    .spawn(Box::new(Task::new(
-                        na.clone(),
-                        self.resolver.clone(),
-                        self.timeout,
-                        tx,
-                    )))
-                    .expect("must be able to spawn");
+            DefaultExecutor::current()
+                .spawn(Box::new(Task::new(
+                    name.clone(),
+                    self.resolver.clone(),
+                    self.timeout,
+                    tx,
+                )))
+                .expect("must be able to spawn");
 
-                let svc = Service {
-                    rx,
-                    stack: self.inner.clone(),
-                    service: None,
-                };
-                Ok(svc::Either::A(svc))
-            }
-            Addr::Socket(_) | Addr::SocketWithName {..} => self.inner.make(addr).map(svc::Either::B),
+            let svc = Service {
+                rx,
+                stack: self.inner.clone(),
+                service: None,
+            };
+            Ok(svc::Either::A(svc))
+        } else {
+            self.inner.make(name).map(svc::Either::B)
         }
     }
 }
 
 // === impl Task ===
 
-impl Task {
+impl<N> Task<N>
+where
+    N: Canonicalize + Clone + Eq + fmt::Debug,
+{
     fn new(
-        original: NameAddr,
+        original: N,
         resolver: dns::Resolver,
         timeout: Duration,
-        tx: mpsc::Sender<NameAddr>,
+        tx: mpsc::Sender<N>,
     ) -> Self {
         Self {
             original,
@@ -156,15 +177,20 @@ impl Task {
     }
 }
 
-impl Future for Task {
+impl<N> Future for Task<N>
+where
+    N: Canonicalize + Clone + Eq + fmt::Debug,
+{
     type Item = ();
     type Error = ();
 
     fn poll(&mut self) -> Poll<(), ()> {
+        let uncanonical_name = self.original.uncanonical_name()
+        .expect("original must be uncanonicalized");
         loop {
             self.state = match self.state {
                 State::Init => {
-                    let f = self.resolver.refine(self.original.name());
+                    let f = self.resolver.refine(uncanonical_name);
                     State::Pending(Timeout::new(f, self.timeout))
                 }
                 State::Pending(ref mut fut) => {
@@ -176,7 +202,7 @@ impl Future for Task {
                             // If the resolved name is a new name, bind a
                             // service with it and set a delay that will notify
                             // when the resolver should be consulted again.
-                            let resolved = NameAddr::new(refine.name, self.original.port());
+                            let resolved = self.original.with_canonical(refine.name);
                             if self.resolved.get() != Some(&resolved) {
                                 let err = self.tx.try_send(resolved.clone()).err();
                                 if err.map(|e| e.is_disconnected()).unwrap_or(false) {
@@ -194,7 +220,7 @@ impl Future for Task {
                                 // publish the original name so it can proceed.
                                 warn!(
                                     "failed to refine {}: {}; using original name",
-                                    self.original.name(),
+                                    uncanonical_name,
                                     e,
                                 );
                                 let err = self.tx.try_send(self.original.clone()).err();
@@ -208,7 +234,7 @@ impl Future for Task {
                             } else {
                                 debug!(
                                     "failed to refresh {}: {}; cache={:?}",
-                                    self.original.name(),
+                                    uncanonical_name,
                                     e,
                                     self.resolved,
                                 );
@@ -243,8 +269,8 @@ impl Future for Task {
     }
 }
 
-impl Cache {
-    fn get(&self) -> Option<&NameAddr> {
+impl<N> Cache<N> {
+    fn get(&self) -> Option<&N> {
         match self {
             Cache::Resolved(ref r) => Some(&r),
             _ => None,
@@ -254,13 +280,13 @@ impl Cache {
 
 // === impl Service ===
 
-impl<M, Req, Svc, A> svc::Service<Req> for Service<M, A>
+impl<M, Req, Svc, N> svc::Service<Req> for Service<M, N>
 where
-    M: svc::Stack<A, Value = Svc>,
+    M: svc::Stack<N, Value = Svc>,
     M::Error: Into<Error>,
     Svc: svc::Service<Req>,
     Svc::Error: Into<Error>,
-    A: From<NameAddr>,
+    N: Canonicalize + Clone + Eq + fmt::Display,
 {
     type Response = <M::Value as svc::Service<Req>>::Response;
     type Error = Error;
@@ -270,9 +296,9 @@ where
     >;
 
     fn poll_ready(&mut self) -> Poll<(), Self::Error> {
-        while let Ok(Async::Ready(Some(addr))) = self.rx.poll() {
-            debug!("refined: {}", addr);
-            let svc = self.stack.make(&addr.into()).map_err(Into::into)?;
+        while let Ok(Async::Ready(Some(canonical))) = self.rx.poll() {
+            debug!("refined: {}", canonical);
+            let svc = self.stack.make(&canonical).map_err(Into::into)?;
             self.service = Some(svc);
         }
 
@@ -291,5 +317,23 @@ where
             .expect("poll_ready must be called first")
             .call(req)
             .map_err(Into::into)
+    }
+}
+
+// === Canonicalize ===
+
+impl Canonicalize for Addr {
+    fn uncanonical_name(&self) -> Option<&dns::Name> {
+        self.name_addr().map(NameAddr::name)
+    }
+
+    fn with_canonical(&self, canonical: dns::Name) -> Self {
+        match self {
+            Addr::Name(ref original) => Addr::Name(NameAddr::new(canonical, original.port())),
+            _ => {
+                error!("tried to canonicalize {} with name {}, this is likely a bug", self, canonical);
+                self.clone()
+            }
+        }
     }
 }

@@ -9,7 +9,10 @@ use tap;
 use transport::{connect, tls};
 use {Conditional, NameAddr};
 use addr::Addr;
-use proxy::http::router::Recognize;
+use proxy::{
+    http::router::Recognize,
+    canonicalize::Canonicalize,
+};
 use dns;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -171,26 +174,34 @@ impl RecognizeAddr {
 
 // === impl WithDst ===
 
-impl From<NameAddr> for WithDst {
-    fn from(addr: NameAddr) -> Self {
-        Self {
-            addr: addr.into(),
-            name: None,
-        }
-    }
-}
-
-impl<'a> Into<&'a Addr> for &'a WithDst {
-    fn into(self) -> &'a Addr  {
-        &self.addr
-    }
-}
-
 impl fmt::Display for WithDst {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.name {
             Some(ref name) => write!(f, "{} ({})", self.addr, name),
             _ => self.addr.fmt(f),
+        }
+    }
+}
+
+impl Canonicalize for WithDst {
+    fn uncanonical_name(&self) -> Option<&dns::Name> {
+        self.name.as_ref().map(NameAddr::name)
+    }
+
+    fn with_canonical(&self, canonical: dns::Name) -> Self {
+        match (&self.addr, self.name.as_ref()) {
+            (Addr::Socket(ref sock), Some(ref original)) => Self {
+                addr: Addr::Socket(*sock),
+                name: Some(NameAddr::new(canonical, original.port())),
+            },
+            (Addr::Socket(_), None) => {
+                error!("tried to canonicalize {} with name {}, this is likely a bug", self, canonical);
+                self.clone()
+            },
+            (Addr::Name(ref original), ref name) => Self {
+                addr: Addr::Name(NameAddr::new(canonical, original.port())),
+                name: name.cloned(),
+            }
         }
     }
 }
