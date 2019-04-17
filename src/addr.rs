@@ -166,6 +166,10 @@ impl NameAddr {
         &self.name
     }
 
+    pub fn into_name(self) -> Name {
+        self.name
+    }
+
     pub fn port(&self) -> u16 {
         self.port
     }

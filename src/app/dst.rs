@@ -11,7 +11,7 @@ use proxy::http::{
 };
 use {Addr, NameAddr};
 
-use super::classify;
+use super::{classify, outbound::OutAddr};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Direction {
@@ -111,11 +111,19 @@ impl AsRef<Addr> for DstAddr {
 }
 
 impl DstAddr {
-    pub fn outbound(addr: super::outbound::OutAddr) -> Self {
+    pub fn outbound(addr: OutAddr) -> Self {
+        let (addr, orig_name) = match addr {
+            OutAddr::Socket(socket) => (Addr::Socket(socket), None),
+            OutAddr::Name(name) => (Addr::Name(name), None),
+            OutAddr::NamedSocket { socket, name } => {
+                let name = NameAddr::new(name, socket.port());
+                (Addr::Socket(socket), Some(name))
+            },
+        };
         DstAddr {
-            addr: addr.addr,
+            addr,
             direction: Direction::Out,
-            orig_name: addr.name,
+            orig_name,
         }
     }
 
@@ -140,7 +148,11 @@ impl<'t> From<&'t DstAddr> for http::header::HeaderValue {
 
 impl fmt::Display for DstAddr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.addr.fmt(f)
+        if let Some(ref orig_name) = self.orig_name {
+            write!(f, "{} ({})", self.addr, orig_name)
+        } else {
+            self.addr.fmt(f)
+        }
     }
 }
 

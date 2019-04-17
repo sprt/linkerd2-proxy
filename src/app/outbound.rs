@@ -29,9 +29,10 @@ pub struct RecognizeAddr {
 }
 
 #[derive(Clone, Hash, Eq, PartialEq, Debug)]
-pub struct OutAddr {
-    pub(in app) addr: Addr,
-    pub(in app) name: Option<NameAddr>,
+pub enum OutAddr {
+    Name(NameAddr),
+    Socket(SocketAddr),
+    NamedSocket { socket: SocketAddr, name: dns::Name, }
 }
 
 // === impl Endpoint ===
@@ -141,22 +142,16 @@ impl<B> Recognize<http::Request<B>> for RecognizeAddr {
                     .or_else(|_| super::http_request_host_addr(req))
             })
             .and_then(|addr| {
-                let in_search_suffixes = addr.name_addr().map(|auth| {
-                        let auth = auth.name();
+                let name = addr.into_name_addr();
+                let in_search_suffixes = name.as_ref().map(|addr| {
+                        let auth = addr.name();
                         self.suffixes.iter().any(|s| s.contains(auth))
                     }).unwrap_or(false);
                 if in_search_suffixes {
-                    Ok(OutAddr {
-                        addr,
-                        name: None,
-                    })
+                    Ok(name.expect("must be some if `in_search_suffixes == true`").into())
                 } else {
-                    let name = addr.into_name_addr();
                     let addr = super::http_request_orig_dst_addr(req)?;
-                    Ok(OutAddr {
-                        addr,
-                        name,
-                    })
+                    Ok(OutAddr::with_name(addr, name))
                 }
             });
         debug!("outbound addr={:?}", addr);
@@ -174,34 +169,55 @@ impl RecognizeAddr {
 
 // === impl OutAddr ===
 
+impl OutAddr {
+    fn with_name(addr: Addr, name: Option<NameAddr>) -> Self {
+        match (addr, name) {
+            (Addr::Name(name), _) => OutAddr::Name(name),
+            (Addr::Socket(socket), Some(na)) => OutAddr::NamedSocket {
+                socket,
+                name: na.into_name(),
+            },
+            (Addr::Socket(socket), None) => OutAddr::Socket(socket),
+        }
+    }
+}
+
+impl From<NameAddr> for OutAddr {
+    fn from(na: NameAddr) -> OutAddr {
+        OutAddr::Name(na)
+    }
+}
+
 impl fmt::Display for OutAddr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self.name {
-            Some(ref name) => write!(f, "{} ({})", self.addr, name),
-            _ => self.addr.fmt(f),
+        match self {
+            OutAddr::NamedSocket { ref socket, ref name } => write!(f, "{} ({})", socket, name),
+            OutAddr::Socket(ref socket) => socket.fmt(f),
+            OutAddr::Name(ref name) => name.fmt(f),
         }
     }
 }
 
 impl Canonicalize for OutAddr {
     fn uncanonical_name(&self) -> Option<&dns::Name> {
-        self.name.as_ref().map(NameAddr::name)
+        match self {
+            OutAddr::Name(ref addr) => Some(addr.name()),
+            OutAddr::NamedSocket { ref name, ..} => Some(name),
+            OutAddr::Socket(_) => None,
+        }
     }
 
     fn with_canonical(&self, canonical: dns::Name) -> Self {
-        match (&self.addr, self.name.as_ref()) {
-            (Addr::Socket(ref sock), Some(ref original)) => Self {
-                addr: Addr::Socket(*sock),
-                name: Some(NameAddr::new(canonical, original.port())),
+        match self {
+            OutAddr::NamedSocket { ref socket, ..} => OutAddr::NamedSocket {
+                socket: *socket,
+                name: canonical,
             },
-            (Addr::Socket(_), None) => {
-                error!("tried to canonicalize {} with name {}, this is likely a bug", self, canonical);
+            OutAddr::Socket(_) => {
+                error!("tried to canonicalize socket addr {} with name {}, this is likely a bug", self, canonical);
                 self.clone()
             },
-            (Addr::Name(ref original), ref name) => Self {
-                addr: Addr::Name(NameAddr::new(canonical, original.port())),
-                name: name.cloned(),
-            }
+            OutAddr::Name(ref original) => OutAddr::Name(NameAddr::new(canonical, original.port())),
         }
     }
 }
