@@ -542,7 +542,7 @@ where
             // routed by the dst_router.
             let addr_stack = dst_router
                 .push(insert_target::layer())
-                .push(map_target::layer(|addr: &outbound::WithDst| {
+                .push(map_target::layer(|addr: &outbound::OutAddr| {
                     DstAddr::outbound(addr.clone())
                 }))
                 .push(canonicalize::layer(dns_resolver, canonicalize_timeout));

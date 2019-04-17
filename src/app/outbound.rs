@@ -29,7 +29,7 @@ pub struct RecognizeAddr {
 }
 
 #[derive(Clone, Hash, Eq, PartialEq, Debug)]
-pub struct WithDst {
+pub struct OutAddr {
     pub(in app) addr: Addr,
     pub(in app) name: Option<NameAddr>,
 }
@@ -126,7 +126,7 @@ impl tap::Inspect for Endpoint {
 // === impl RecognizeAddr ===
 
 impl<B> Recognize<http::Request<B>> for RecognizeAddr {
-    type Target = WithDst;
+    type Target = OutAddr;
 
     fn recognize(&self, req: &http::Request<B>) -> Option<Self::Target> {
         // FIXME(eliza): this is pretty gross but i wanted to get the same
@@ -146,14 +146,14 @@ impl<B> Recognize<http::Request<B>> for RecognizeAddr {
                         self.suffixes.iter().any(|s| s.contains(auth))
                     }).unwrap_or(false);
                 if in_search_suffixes {
-                    Ok(WithDst {
+                    Ok(OutAddr {
                         addr,
                         name: None,
                     })
                 } else {
                     let name = addr.into_name_addr();
                     let addr = super::http_request_orig_dst_addr(req)?;
-                    Ok(WithDst {
+                    Ok(OutAddr {
                         addr,
                         name,
                     })
@@ -172,9 +172,9 @@ impl RecognizeAddr {
     }
 }
 
-// === impl WithDst ===
+// === impl OutAddr ===
 
-impl fmt::Display for WithDst {
+impl fmt::Display for OutAddr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.name {
             Some(ref name) => write!(f, "{} ({})", self.addr, name),
@@ -183,7 +183,7 @@ impl fmt::Display for WithDst {
     }
 }
 
-impl Canonicalize for WithDst {
+impl Canonicalize for OutAddr {
     fn uncanonical_name(&self) -> Option<&dns::Name> {
         self.name.as_ref().map(NameAddr::name)
     }

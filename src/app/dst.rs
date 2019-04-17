@@ -111,7 +111,7 @@ impl AsRef<Addr> for DstAddr {
 }
 
 impl DstAddr {
-    pub fn outbound(addr: super::outbound::WithDst) -> Self {
+    pub fn outbound(addr: super::outbound::OutAddr) -> Self {
         DstAddr {
             addr: addr.addr,
             direction: Direction::Out,
