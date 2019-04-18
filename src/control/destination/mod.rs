@@ -31,7 +31,7 @@ use tower_grpc::{generic::client::GrpcService, BoxBody};
 
 use dns;
 use identity;
-use proxy::resolve::{self, Resolve, Update};
+use proxy::resbal::{self, Resolve, Update};
 
 pub mod background;
 
@@ -150,7 +150,7 @@ impl Resolve<NameAddr> for Resolver {
     }
 }
 
-impl resolve::Resolution for Resolution {
+impl resbal::Resolution for Resolution {
     type Endpoint = Metadata;
     type Error = ();
 

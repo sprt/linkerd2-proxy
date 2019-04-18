@@ -113,15 +113,15 @@ pub mod discovery {
     use super::super::dst::DstAddr;
     use super::Endpoint;
     use control::destination::Metadata;
-    use proxy::resolve;
+    use proxy::resbal;
     use transport::tls;
     use {Addr, Conditional, NameAddr};
 
     #[derive(Clone, Debug)]
-    pub struct Resolve<R: resolve::Resolve<NameAddr>>(R);
+    pub struct Resolve<R: resbal::Resolve<NameAddr>>(R);
 
     #[derive(Debug)]
-    pub enum Resolution<R: resolve::Resolution> {
+    pub enum Resolution<R: resbal::Resolution> {
         Name(NameAddr, R),
         Addr(Option<SocketAddr>),
     }
@@ -130,16 +130,16 @@ pub mod discovery {
 
     impl<R> Resolve<R>
     where
-        R: resolve::Resolve<NameAddr, Endpoint = Metadata>,
+        R: resbal::Resolve<NameAddr, Endpoint = Metadata>,
     {
         pub fn new(resolve: R) -> Self {
             Resolve(resolve)
         }
     }
 
-    impl<R> resolve::Resolve<DstAddr> for Resolve<R>
+    impl<R> resbal::Resolve<DstAddr> for Resolve<R>
     where
-        R: resolve::Resolve<NameAddr, Endpoint = Metadata>,
+        R: resbal::Resolve<NameAddr, Endpoint = Metadata>,
     {
         type Endpoint = Endpoint;
         type Resolution = Resolution<R::Resolution>;
@@ -154,21 +154,21 @@ pub mod discovery {
 
     // === impl Resolution ===
 
-    impl<R> resolve::Resolution for Resolution<R>
+    impl<R> resbal::Resolution for Resolution<R>
     where
-        R: resolve::Resolution<Endpoint = Metadata>,
+        R: resbal::Resolution<Endpoint = Metadata>,
     {
         type Endpoint = Endpoint;
         type Error = R::Error;
 
-        fn poll(&mut self) -> Poll<resolve::Update<Self::Endpoint>, Self::Error> {
+        fn poll(&mut self) -> Poll<resbal::Update<Self::Endpoint>, Self::Error> {
             match self {
                 Resolution::Name(ref name, ref mut res) => match try_ready!(res.poll()) {
-                    resolve::Update::Remove(addr) => {
+                    resbal::Update::Remove(addr) => {
                         debug!("removing {}", addr);
-                        Ok(Async::Ready(resolve::Update::Remove(addr)))
+                        Ok(Async::Ready(resbal::Update::Remove(addr)))
                     }
-                    resolve::Update::Add(addr, metadata) => {
+                    resbal::Update::Add(addr, metadata) => {
                         let identity = metadata
                             .identity()
                             .cloned()
@@ -185,7 +185,7 @@ pub mod discovery {
                             identity,
                             metadata,
                         };
-                        Ok(Async::Ready(resolve::Update::Add(addr, ep)))
+                        Ok(Async::Ready(resbal::Update::Add(addr, ep)))
                     }
                 },
                 Resolution::Addr(ref mut addr) => match addr.take() {
@@ -198,7 +198,7 @@ pub mod discovery {
                             ),
                             metadata: Metadata::empty(),
                         };
-                        Ok(Async::Ready(resolve::Update::Add(addr, ep)))
+                        Ok(Async::Ready(resbal::Update::Add(addr, ep)))
                     }
                     None => Ok(Async::NotReady),
                 },

@@ -9,11 +9,11 @@ pub mod http;
 pub mod limit;
 mod protocol;
 pub mod reconnect;
-pub mod resolve;
+pub mod resbal;
 pub mod server;
 mod tcp;
 
-pub use self::resolve::{Resolution, Resolve};
+pub use self::resbal::{Resolution, Resolve};
 pub use self::server::{Server, Source};
 
 /// Wraps serverside transports with additional functionality.

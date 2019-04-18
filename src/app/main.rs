@@ -187,9 +187,6 @@ where
 
         const MAX_IN_FLIGHT: usize = 10_000;
 
-        const EWMA_DEFAULT_RTT: Duration = Duration::from_millis(30);
-        const EWMA_DECAY: Duration = Duration::from_secs(10);
-
         info!("using destination service at {:?}", config.destination_addr);
         match config.identity_config.as_ref() {
             Conditional::Some(config) => info!("using identity service at {:?}", config.svc.addr),
@@ -418,8 +415,8 @@ where
             };
             use proxy::{
                 canonicalize,
-                http::{balance, header_from_target, metrics, retry},
-                resolve,
+                http::{header_from_target, metrics, retry},
+                resbal,
             };
 
             let profiles_client = profiles_client.clone();
@@ -498,11 +495,10 @@ where
             // 1. Adds the `CANONICAL_DST_HEADER` from the `DstAddr`.
             // 2. Determines the profile of the destination and applies
             //    per-route policy.
-            // 3. Creates a load balancer , configured by resolving the
+            // 3. Creates a load balancer, configured by resolving the
             //   `DstAddr` with a resolver.
             let dst_stack = endpoint_stack
-                .push(resolve::layer(Resolve::new(resolver)))
-                .push(balance::layer(EWMA_DEFAULT_RTT, EWMA_DECAY))
+                .push(resbal::layer(Resolve::new(resolver)))
                 .push(buffer::layer(MAX_IN_FLIGHT))
                 .push(profiles::router::layer(
                     profile_suffixes,
