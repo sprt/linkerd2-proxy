@@ -254,6 +254,7 @@ mod test_util {
     use std::fmt;
     use std::rc::Rc;
     use svc::Service;
+    use super::Make;
 
     pub struct Recognize;
 
@@ -369,6 +370,7 @@ mod tests {
     use std::usize;
     use svc::Service;
     use test_util::*;
+    use super::Make;
 
     impl<Mk> Router<Request, Recognize, Mk>
     where
