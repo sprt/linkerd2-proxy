@@ -1,6 +1,7 @@
 extern crate hyper_balance;
 extern crate tower_balance;
 extern crate tower_discover;
+extern crate linkerd2_router as rt;
 
 use futures::{Async, Future, Poll};
 use hyper::body::Payload;
@@ -11,6 +12,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
+use std::mem;
 use std::time::Duration;
 
 use self::tower_discover::{Change, Discover};
@@ -18,29 +20,50 @@ use self::tower_discover::{Change, Discover};
 pub use self::hyper_balance::{PendingUntilFirstData, PendingUntilFirstDataBody};
 pub use self::tower_balance::{choose::PowerOfTwoChoices, load::WithPeakEwma, Balance};
 
+use proxy::{resolve, http::router};
 use http;
 use svc;
 
 /// Configures a stack to resolve `T` typed targets to balance requests over
 /// `M`-typed endpoint stacks.
 #[derive(Debug)]
-pub struct Layer<A, B, C> {
+pub struct Layer<A, B, C, R> {
     decay: Duration,
     default_rtt: Duration,
+    resolve: R,
     fallback: C,
+    config: router::Config,
     _marker: PhantomData<fn(A) -> B>,
 }
 
 /// Resolves `T` typed targets to balance requests over `M`-typed endpoint stacks.
 #[derive(Debug)]
-pub struct MakeSvc<M, A, B, C> {
+pub struct MakeSvc<A, B, C, R> {
     decay: Duration,
     default_rtt: Duration,
-    inner: M,
     fallback: C,
+    resolve: R,
+    config: router::Config,
     _marker: PhantomData<fn(A) -> B>,
 }
 
+/// Resolves `T` typed targets to balance requests over `M`-typed endpoint stacks.
+#[derive(Debug)]
+pub struct MakeFuture<A, B, C, R>
+where
+    C: Future,
+    C::Item: fmt::Debug,
+    R: Future,
+    R::Item: fmt::Debug,
+{
+    decay: Duration,
+    default_rtt: Duration,
+    fallback: Making<C>,
+    resolve: Making<R>,
+    _marker: PhantomData<fn(A) -> B>,
+}
+
+#[derive(Clone)]
 pub struct Service<A, B> {
     is_empty: Arc<AtomicBool>,
     balance: B,
@@ -61,47 +84,88 @@ pub enum ResponseFuture<A, B> {
 }
 
 #[derive(Debug)]
+enum Making<A: Future> {
+    NotReady(A),
+    Ready(A::Item),
+    Over,
+}
+
+#[derive(Debug)]
 pub struct Error;
 
 // === impl Layer ===
 
-pub fn layer<A, B, C>(default_rtt: Duration, decay: Duration, fallback: C) -> Layer<A, B, C>
-where
-    C: svc::Service<http::Request<A>, Response = http::Response<B>> + Clone + Send + Sync + 'static,
-{
+pub fn layer<A, B>(default_rtt: Duration, decay: Duration, config: router::Config) -> Layer<A, B, (), ()> {
     Layer {
         decay,
         default_rtt,
-        fallback,
+        fallback: (),
+        resolve: (),
+        config,
         _marker: PhantomData,
     }
 }
 
-impl<A, B, C: Clone> Clone for Layer<A, B, C> {
+impl<A, B, C> Layer<A, B, C, ()> {
+    pub fn with_resolve<R>(self, resolve: R) -> Layer<A, B, C, R> {
+        Layer {
+            decay: self.decay,
+            default_rtt: self.default_rtt,
+            fallback: self.fallback,
+            resolve,
+            config: self.config,
+            _marker: PhantomData
+        }
+    }
+}
+
+impl<A, B, R> Layer<A, B, (), R> {
+    pub fn with_fallback<C>(self, fallback: C) -> Layer<A, B, C, R> {
+        Layer {
+            decay: self.decay,
+            default_rtt: self.default_rtt,
+            fallback,
+            resolve: self.resolve,
+            config: self.config,
+            _marker: PhantomData
+        }
+    }
+}
+
+
+impl<A, B, C: Clone, R: Clone> Clone for Layer<A, B, C, R> {
     fn clone(&self) -> Self {
         Layer {
             decay: self.decay,
             default_rtt: self.default_rtt,
             fallback: self.fallback.clone(),
+            resolve: self.resolve.clone(),
+            config: self.config.clone(),
             _marker: PhantomData,
         }
     }
 }
 
-impl<M, A, B, C> svc::Layer<M> for Layer<A, B, C>
+impl<M, A, B, C, R> svc::Layer<M> for Layer<A, B, C, resolve::Layer<R>>
 where
     A: Payload,
     B: Payload,
-    C: Clone + Send + Sync,
+    C: svc::Layer<M>,
+    C::Service: Send + 'static,
+    R: resolve::Resolution + Clone,
+    R::Endpoint: fmt::Debug,
+    R::Error: Into<Error>,
+    M: rt::Make<R::Endpoint>,
 {
-    type Service = MakeSvc<M, A, B, C>;
+    type Service = MakeSvc<A, B, C::Service, resolve::MakeSvc<R, M>>;
 
     fn layer(&self, inner: M) -> Self::Service {
         MakeSvc {
             decay: self.decay,
             default_rtt: self.default_rtt,
-            inner,
-            fallback: self.fallback.clone(),
+            fallback: self.fallback.layer(inner),
+            resolve: self.resolve.layer(inner),
+            config: self.config.clone(),
             _marker: PhantomData,
         }
     }
@@ -109,78 +173,97 @@ where
 
 // === impl MakeSvc ===
 
-impl<M: Clone, A, B, C: Clone> Clone for MakeSvc<M, A, B, C> {
+impl<A, B, C: Clone, R: Clone> Clone for MakeSvc<A, B, C, R> {
     fn clone(&self) -> Self {
         MakeSvc {
             decay: self.decay,
             default_rtt: self.default_rtt,
-            inner: self.inner.clone(),
             fallback: self.fallback.clone(),
+            resolve: self.resolve.clone(),
+            config: self.config.clone(),
             _marker: PhantomData,
         }
     }
 }
 
-impl<T, M, A, B, C> svc::Service<T> for MakeSvc<M, A, B, C>
+impl<T, A, B, C, R, M> svc::Service<T> for MakeSvc<A, B, C, resolve::MakeSvc<R, M>>
 where
-    M: svc::Service<T>,
-    M::Response: Discover,
-    <M::Response as Discover>::Service:
-        svc::Service<http::Request<A>, Response = http::Response<B>>,
+    resolve::MakeSvc<R, M>: svc::Service<T>,
+    <resolve::MakeSvc<R, M> as svc::Service<T>>::Response: Discover + fmt::Debug,
+    // R::Future: Send + 'static,
+    // <R::Future as Future>::Item: fmt::Debug,
+    // R::Response: Discover,
+    <<resolve::MakeSvc<R, M> as svc::Service<T>>::Response as Discover>::Service:
+        svc::Service<http::Request<A>, Response = http::Response<B>> + fmt::Debug+ Send + Sync + 'static,
+    C: svc::Service<router::Config> + Send + 'static,
+
+    C::Future: Send + 'static,
+    <C::Future as Future>::Item: fmt::Debug,
+    C::Response:
+        svc::Service<http::Request<A>, Response = http::Response<B>>+ Send + Sync + 'static,
     A: Payload,
     B: Payload,
-    C: svc::Service<http::Request<A>, Response = http::Response<B>> + Clone + Send + Sync + 'static,
 {
     type Response = Service<
-        C,
-        Balance<WithPeakEwma<WithEmpty<M::Response>, PendingUntilFirstData>, PowerOfTwoChoices>,
+        C::Response,
+        Balance<WithPeakEwma<WithEmpty<
+            <resolve::MakeSvc<R, M> as svc::Service<T>>::Response>, PendingUntilFirstData>, PowerOfTwoChoices>,
     >;
-    type Error = M::Error;
-    type Future = MakeSvc<M::Future, A, B, C>;
+    type Error = Error;
+    type Future = MakeFuture<A, B, C::Future, <resolve::MakeSvc<R, M> as svc::Service<T>>::Future>;
 
     fn poll_ready(&mut self) -> Poll<(), Self::Error> {
-        self.inner.poll_ready()
+        let resolve = self.resolve.poll_ready().map_err(|_| Error);
+        let fallback = self.fallback.poll_ready().map_err(|_| Error);
+        try_ready!(resolve);
+        fallback
     }
 
     fn call(&mut self, target: T) -> Self::Future {
-        let inner = self.inner.call(target);
+        let resolve = Making::NotReady(self.resolve.call(target));
+        let fallback = Making::NotReady(self.fallback.call(self.config.clone()));
 
-        MakeSvc {
+        MakeFuture {
             decay: self.decay,
             default_rtt: self.default_rtt,
-            inner,
-            fallback: self.fallback.clone(),
+            resolve,
+            fallback,
             _marker: PhantomData,
         }
     }
 }
 
-impl<F, A, B, C> Future for MakeSvc<F, A, B, C>
+impl<A, B, C, R> Future for MakeFuture<A, B, C, R>
 where
-    F: Future,
-    F::Item: Discover,
-    <F::Item as Discover>::Service: svc::Service<http::Request<A>, Response = http::Response<B>>,
+    R: Future,
+    R::Item: Discover + fmt::Debug,
+    <R::Item as Discover>::Service: svc::Service<http::Request<A>, Response = http::Response<B>>+ Send + Sync + 'static,
     A: Payload,
     B: Payload,
-    C: svc::Service<http::Request<A>, Response = http::Response<B>> + Clone + Send + Sync + 'static,
+    C: Future,
+    C::Item: svc::Service<http::Request<A>, Response = http::Response<B>> + fmt::Debug + Send + Sync + 'static,
 {
     type Item = Service<
-        C,
-        Balance<WithPeakEwma<WithEmpty<F::Item>, PendingUntilFirstData>, PowerOfTwoChoices>,
+        C::Item,
+        Balance<WithPeakEwma<WithEmpty<R::Item>, PendingUntilFirstData>, PowerOfTwoChoices>,
     >;
-    type Error = F::Error;
+    type Error = Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        let discover = try_ready!(self.inner.poll());
-        let (discover, is_empty) = WithEmpty::new(discover);
-        let instrument = PendingUntilFirstData::default();
-        let loaded = WithPeakEwma::new(discover, self.default_rtt, self.decay, instrument);
-        let balance = Balance::p2c(loaded);
-        Ok(Async::Ready(Service {
-            balance,
-            is_empty,
-            fallback: self.fallback.clone(),
-        }))
+        if self.resolve.poll().map_err(|_| Error)? && self.fallback.poll().map_err(|_| Error)? {
+            let (discover, is_empty) = WithEmpty::new(self.resolve.take());
+            let instrument = PendingUntilFirstData::default();
+            let loaded = WithPeakEwma::new(discover, self.default_rtt, self.decay, instrument);
+            let balance = Balance::p2c(loaded);
+            Ok(Async::Ready(Service {
+                balance,
+                is_empty,
+                fallback: self.fallback.take(),
+            }))
+        } else {
+            Ok(Async::NotReady)
+        }
+
     }
 }
 
@@ -224,8 +307,8 @@ impl<D: Discover> WithEmpty<D> {
 
 impl<A, B, R> svc::Service<R> for Service<A, B>
 where
-    A: svc::Service<R> + Clone + Send + Sync + 'static,
-    B: svc::Service<R, Response = A::Response> + Clone + Send + Sync + 'static,
+    A: svc::Service<R> + Send + Sync + 'static,
+    B: svc::Service<R, Response = A::Response> + Send + Sync + 'static,
 {
     type Response = A::Response;
     type Error = Error;
@@ -272,3 +355,28 @@ impl fmt::Display for Error {
     }
 }
 impl error::Error for Error {}
+
+
+impl<A: Future> Making<A> {
+    fn poll(&mut self) -> Result<bool, A::Error> {
+        let res = match *self {
+            Making::NotReady(ref mut a) => a.poll()?,
+            Making::Ready(_) => return Ok(true),
+            Making::Over => panic!("cannot poll MakeFuture twice"),
+        };
+        match res {
+            Async::Ready(res) => {
+                *self = Making::Ready(res);
+                Ok(true)
+            }
+            Async::NotReady => Ok(false),
+        }
+    }
+
+    fn take(&mut self) -> A::Item {
+        match mem::replace(self, Making::Over) {
+            Making::Ready(a) => a,
+            _ => panic!(),
+        }
+    }
+}
