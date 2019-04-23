@@ -502,7 +502,32 @@ where
                 ))
                 .layer(buffer::layer(max_in_flight))
                 .layer(pending::layer())
-                .layer(balance::layer(EWMA_DEFAULT_RTT, EWMA_DECAY))
+                .layer(balance::layer(
+                    EWMA_DEFAULT_RTT,
+                    EWMA_DECAY,
+                    svc::builder()
+                        .layer(router::layer(|req: &http::Request<_>| {
+                            let ep = req
+                                .extensions()
+                                .get::<proxy::Source>()
+                                .and_then(|src| src.orig_dst_if_not_local())
+                                .map(|addr| Endpoint {
+                                    dst_name: None,
+                                    addr,
+                                    identity: Conditional::None(
+                                        tls::ReasonForNoPeerName::NotProvidedByServiceDiscovery
+                                            .into(),
+                                    ),
+                                    metadata: control::destination::Metadata::empty(),
+                                });
+                            debug!("outbound ep={:?}", ep);
+                            ep
+                        }))
+                        .layer(buffer::layer(max_in_flight))
+                        .layer(pending::layer())
+                        .service(endpoint_stack.clone())
+                        .make(&router::Config::new("out ep", capacity, max_idle_age)),
+                ))
                 .layer(resolve::layer(Resolve::new(resolver)))
                 .layer(pending::layer())
                 .service(endpoint_stack);
