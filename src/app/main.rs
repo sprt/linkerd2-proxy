@@ -503,7 +503,26 @@ where
                 .layer(buffer::layer(max_in_flight))
                 .layer(pending::layer())
                 .layer(balance::layer(EWMA_DEFAULT_RTT, EWMA_DECAY)
-                    .with_discover(resolve::layer(Resolve::new(resolver))))
+                    .with_discover(resolve::layer(Resolve::new(resolver)))
+                    .with_fallback(|req: &http::Request<_>| {
+                    req
+                        .extensions()
+                        .get::<proxy::Source>()
+                        .and_then(|src| src.orig_dst_if_not_local())
+                        .map(|addr| Endpoint {
+                            dst_name: None,
+                            addr,
+                            identity: Conditional::None(
+                                tls::ReasonForNoPeerName::NotProvidedByServiceDiscovery
+                                    .into(),
+                            ),
+                            metadata: control::destination::Metadata::empty(),
+                        })
+                    // debug!("outbound ep={:?}", ep);
+// ep
+                    })
+                )
+                // .layer(buffer::layer(max_in_flight))
                 .layer(pending::layer())
                 .service(endpoint_stack);
 

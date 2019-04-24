@@ -9,7 +9,7 @@ use svc;
 
 extern crate linkerd2_router as rt;
 
-pub use self::rt::{error, Recognize, Router};
+pub use self::rt::{error, Recognize, Router, Make};
 
 // compiler doesn't notice this type is used in where bounds below...
 #[allow(unused)]
@@ -33,7 +33,7 @@ pub struct Layer<Req, Rec: Recognize<Req>> {
     _p: PhantomData<fn() -> Req>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Stack<Req, Rec: Recognize<Req>, Mk> {
     recognize: Rec,
     inner: Mk,
@@ -138,6 +138,20 @@ where
 
     fn call(&mut self, config: Config) -> Self::Future {
         futures::future::ok(self.make(&config))
+    }
+}
+
+impl<Req, Rec, Mk> Clone for Stack<Req, Rec, Mk>
+where
+    Rec: Recognize<Req> + Clone,
+    Mk: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            recognize: self.recognize.clone(),
+            inner: self.inner.clone(),
+            _p: PhantomData,
+        }
     }
 }
 
