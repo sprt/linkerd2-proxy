@@ -107,7 +107,7 @@ pub fn layer<A, B>(default_rtt: Duration, decay: Duration, config: router::Confi
 }
 
 impl<A, B, C> Layer<A, B, C, ()> {
-    pub fn with_resolve<R>(self, resolve: R) -> Layer<A, B, C, R> {
+    pub fn with_resolve<R: svc::Layer<M>, M>(self, resolve: R) -> Layer<A, B, C, R> {
         Layer {
             decay: self.decay,
             default_rtt: self.default_rtt,
@@ -120,7 +120,7 @@ impl<A, B, C> Layer<A, B, C, ()> {
 }
 
 impl<A, B, R> Layer<A, B, (), R> {
-    pub fn with_fallback<C>(self, fallback: C) -> Layer<A, B, C, R> {
+    pub fn with_fallback<C: svc::Layer<M>, M>(self, fallback: C) -> Layer<A, B, C, R> {
         Layer {
             decay: self.decay,
             default_rtt: self.default_rtt,
@@ -146,18 +146,16 @@ impl<A, B, C: Clone, R: Clone> Clone for Layer<A, B, C, R> {
     }
 }
 
-impl<M, A, B, C, R> svc::Layer<M> for Layer<A, B, C, resolve::Layer<R>>
+impl<M, A, B, C, R> svc::Layer<M> for Layer<A, B, C, R>
 where
     A: Payload,
     B: Payload,
     C: svc::Layer<M>,
     C::Service: Send + 'static,
-    R: resolve::Resolution + Clone,
-    R::Endpoint: fmt::Debug,
-    R::Error: Into<Error>,
-    M: rt::Make<R::Endpoint>,
+    R: svc::Layer<M>,
+    R::Service: Send + 'static,
 {
-    type Service = MakeSvc<A, B, C::Service, resolve::MakeSvc<R, M>>;
+    type Service = MakeSvc<A, B, C::Service, R::Service>;
 
     fn layer(&self, inner: M) -> Self::Service {
         MakeSvc {
@@ -186,31 +184,33 @@ impl<A, B, C: Clone, R: Clone> Clone for MakeSvc<A, B, C, R> {
     }
 }
 
-impl<T, A, B, C, R, M> svc::Service<T> for MakeSvc<A, B, C, resolve::MakeSvc<R, M>>
+impl<T, A, B, C, R> svc::Service<T> for MakeSvc<A, B, C, R>
 where
-    resolve::MakeSvc<R, M>: svc::Service<T>,
-    <resolve::MakeSvc<R, M> as svc::Service<T>>::Response: Discover + fmt::Debug,
-    // R::Future: Send + 'static,
-    // <R::Future as Future>::Item: fmt::Debug,
-    // R::Response: Discover,
-    <<resolve::MakeSvc<R, M> as svc::Service<T>>::Response as Discover>::Service:
+    R: svc::Service<T>,
+    R::Response: Discover + fmt::Debug,
+    R::Future: Send + 'static,
+    <R::Future as Future>::Item: fmt::Debug,
+    R::Response: Discover,
+    <R::Response as Discover>::Service:
         svc::Service<http::Request<A>, Response = http::Response<B>> + fmt::Debug+ Send + Sync + 'static,
+
+    <<R::Response as Discover>::Service as svc::Service<http::Request<A>>>::Future: Send + 'static,
     C: svc::Service<router::Config> + Send + 'static,
 
     C::Future: Send + 'static,
     <C::Future as Future>::Item: fmt::Debug,
     C::Response:
-        svc::Service<http::Request<A>, Response = http::Response<B>>+ Send + Sync + 'static,
+        svc::Service<http::Request<A>, Response = http::Response<B>> + Send + Sync + 'static,
+    <C::Response as svc::Service<http::Request<A>>>::Future: Send + 'static,
     A: Payload,
     B: Payload,
 {
     type Response = Service<
         C::Response,
-        Balance<WithPeakEwma<WithEmpty<
-            <resolve::MakeSvc<R, M> as svc::Service<T>>::Response>, PendingUntilFirstData>, PowerOfTwoChoices>,
+        Balance<WithPeakEwma<WithEmpty<R::Response>, PendingUntilFirstData>, PowerOfTwoChoices>,
     >;
     type Error = Error;
-    type Future = MakeFuture<A, B, C::Future, <resolve::MakeSvc<R, M> as svc::Service<T>>::Future>;
+    type Future = MakeFuture<A, B, C::Future, R::Future>;
 
     fn poll_ready(&mut self) -> Poll<(), Self::Error> {
         let resolve = self.resolve.poll_ready().map_err(|_| Error);
@@ -273,6 +273,7 @@ impl<D: Discover> Discover for WithEmpty<D> {
     type Key = D::Key;
     type Service = D::Service;
     type Error = D::Error;
+
 
     fn poll(&mut self) -> Poll<Change<Self::Key, Self::Service>, Self::Error> {
         let change = try_ready!(self.inner.poll());

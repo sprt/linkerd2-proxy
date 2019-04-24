@@ -487,7 +487,7 @@ where
                 .layer(insert_target::layer());
 
             let ep_router = router::layer(|req: &http::Request<_>| {
-                    let ep = req
+                    req
                         .extensions()
                         .get::<proxy::Source>()
                         .and_then(|src| src.orig_dst_if_not_local())
@@ -499,9 +499,9 @@ where
                                     .into(),
                             ),
                             metadata: control::destination::Metadata::empty(),
-                        });
-                    debug!("outbound ep={:?}", ep);
-                    ep
+                        })
+                    // debug!("outbound ep={:?}", ep);
+                    // ep
                 });
 
             // A per-`DstAddr` stack that does the following:
@@ -528,7 +528,6 @@ where
                     .with_resolve(resolve::layer(Resolve::new(resolver)))
                     .with_fallback(ep_router)
                 )
-                .layer(pending::layer())
                 .service(endpoint_stack);
 
             // Routes request using the `DstAddr` extension.
