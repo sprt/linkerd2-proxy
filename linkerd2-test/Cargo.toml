@@ -1,20 +1,7 @@
-[workspace]
-members = [
-    ".",
-    "lib/futures-mpsc-lossy",
-    "lib/hyper-balance",
-    "lib/metrics",
-    "lib/router",
-    "lib/stack",
-    "lib/task",
-    "lib/timeout",
-    "linkerd2-test",
-]
-
 [package]
-name = "linkerd2-proxy"
+name = "linkerd2-test"
 version = "0.1.0"
-authors = ["Oliver Gould <ver@buoyant.io>"]
+authors = ["Eliza Weisman <eliza@buoyant.io>"]
 publish = false
 
 [features]
@@ -23,14 +10,16 @@ default = ["flaky_tests"]
 flaky_tests = []
 
 [dependencies]
-futures-mpsc-lossy = { path = "lib/futures-mpsc-lossy" }
-hyper-balance      = { path = "lib/hyper-balance" }
-linkerd2-metrics   = { path = "lib/metrics" }
-linkerd2-never     = { path = "lib/never" }
-linkerd2-router    = { path = "lib/router" }
-linkerd2-stack     = { path = "lib/stack" }
-linkerd2-task      = { path = "lib/task" }
-linkerd2-timeout   = { path = "lib/timeout" }
+
+linkerd2-proxy = { path = ".." }
+futures-mpsc-lossy = { path = "../lib/futures-mpsc-lossy" }
+hyper-balance      = { path = "../lib/hyper-balance" }
+linkerd2-metrics = { path = "../lib/metrics" }
+linkerd2-never     = { path = "../lib/never" }
+linkerd2-router    = { path = "../lib/router" }
+linkerd2-stack     = { path = "../lib/stack" }
+linkerd2-task    = { path = "../lib/task" }
+linkerd2-timeout   = { path = "../lib/timeout" }
 
 linkerd2-proxy-api = { git = "https://github.com/linkerd/linkerd2-proxy-api", tag = "v0.1.8" }
 
@@ -78,28 +67,19 @@ rustls = "0.15"
 tokio-rustls = "0.9"
 untrusted = "0.6"
 
-[target.'cfg(target_os = "linux")'.dependencies]
-libc = "0.2"
-procinfo = "0.4.2"
-
-[dev-dependencies]
 net2 = "0.2"
 quickcheck = { version = "0.8", default-features = false }
-linkerd2-metrics = { path = "./lib/metrics", features = ["test_util"] }
-linkerd2-task    = { path = "lib/task", features = ["test_util"] }
-linkerd2-proxy-api = { git = "https://github.com/linkerd/linkerd2-proxy-api", features = ["arbitrary"], tag = "v0.1.8" }
 flate2 = { version = "1.0.1", default-features = false, features = ["rust_backend"] }
 # `tokio-io` is needed for TCP tests, because `tokio::io` doesn't re-export
 # the `read` function.
 tokio-io = "0.1.6"
 tokio-current-thread = "0.1.4"
 
-# Debug symbols end up chewing up several GB of disk space, so better to just
-# disable them.
-[profile.dev]
-debug = false
-[profile.test]
-debug = false
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
+procinfo = "0.4.2"
 
-[patch.crates-io]
-webpki = { git = "https://github.com/seanmonstar/webpki", branch = "cert-dns-names" }
+[dev-dependencies]
+linkerd2-task    = { path = "../lib/task", features = ["test_util"] }
+linkerd2-metrics = { path = "../lib/metrics", features = ["test_util"] }
+linkerd2-proxy-api = { git = "https://github.com/linkerd/linkerd2-proxy-api", features = ["arbitrary"], tag = "v0.1.8" }

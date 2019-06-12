@@ -7,8 +7,8 @@ use std::io;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
-use support::futures::future::Either;
-use support::*;
+use super::futures::future::Either;
+use super::*;
 
 pub fn new() -> Server {
     http2()

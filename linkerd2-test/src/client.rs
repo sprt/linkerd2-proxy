@@ -1,4 +1,4 @@
-use support::*;
+use super::*;
 
 use std::io;
 use std::sync::Mutex;
@@ -8,8 +8,8 @@ use self::tokio::net::TcpStream;
 use self::webpki::{DNSName, DNSNameRef};
 use rustls::{ClientConfig, ClientSession};
 use std::sync::Arc;
-use support::bytes::IntoBuf;
-use support::hyper::body::Payload;
+use super::bytes::IntoBuf;
+use super::hyper::body::Payload;
 
 type ClientError = hyper::Error;
 type Request = http::Request<Bytes>;

@@ -1,3 +1,4 @@
+#![recursion_limit = "128"]
 // The support mod is compiled for all the integration tests, which are each
 // compiled as separate crates. Each only uses a subset of this module, which
 // means some of it is unused.
@@ -102,7 +103,7 @@ macro_rules! assert_eventually {
             use std::time::{Instant, Duration};
             use std::str::FromStr;
             // TODO: don't do this *every* time eventually is called (lazy_static?)
-            let patience = env::var($crate::support::ENV_TEST_PATIENCE_MS).ok()
+            let patience = env::var($crate::ENV_TEST_PATIENCE_MS).ok()
                 .map(|s| {
                     let millis = u64::from_str(&s)
                         .expect(
@@ -111,7 +112,7 @@ macro_rules! assert_eventually {
                         );
                     Duration::from_millis(millis)
                 })
-                .unwrap_or($crate::support::DEFAULT_TEST_PATIENCE);
+                .unwrap_or($crate::DEFAULT_TEST_PATIENCE);
             let start_t = Instant::now();
             for i in 0..($retries + 1) {
                 if $cond {
@@ -119,7 +120,7 @@ macro_rules! assert_eventually {
                 } else if i == $retries {
                     panic!(
                         "assertion failed after {} (retried {} times): {}",
-                        ::support::HumanDuration(start_t.elapsed()),
+                        $crate::HumanDuration(start_t.elapsed()),
                         i,
                         format_args!($($arg)+)
                     )
