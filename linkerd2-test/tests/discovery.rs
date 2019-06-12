@@ -1,8 +1,8 @@
 #![deny(warnings)]
 #![recursion_limit = "128"]
 #[macro_use]
-mod support;
-use self::support::*;
+extern crate linkerd2_test as support;
+use support::*;
 
 macro_rules! generate_tests {
     (server: $make_server:path, client: $make_client:path) => {

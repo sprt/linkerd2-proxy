@@ -1,7 +1,7 @@
 #![recursion_limit = "128"]
 #![deny(warnings)]
-mod support;
-use self::support::*;
+extern crate linkerd2_test as support;
+use support::*;
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 

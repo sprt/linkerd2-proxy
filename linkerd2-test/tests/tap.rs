@@ -1,8 +1,8 @@
 #![recursion_limit = "128"]
 #![deny(warnings)]
 #[macro_use]
-mod support;
-use self::support::*;
+extern crate linkerd2_test as support;
+use support::*;
 use support::tap::TapEventExt;
 
 // Flaky: sometimes the admin thread hasn't had a chance to register

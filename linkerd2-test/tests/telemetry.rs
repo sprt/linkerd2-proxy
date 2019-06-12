@@ -6,8 +6,8 @@ extern crate flate2;
 extern crate regex;
 
 #[macro_use]
-mod support;
-use self::support::*;
+extern crate linkerd2_test as support;
+use support::*;
 use std::io::Read;
 use support::bytes::IntoBuf;
 

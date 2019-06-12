@@ -1,7 +1,7 @@
 #![deny(warnings)]
 #![recursion_limit = "128"]
-mod support;
-use self::support::*;
+extern crate linkerd2_test as support;
+use support::*;
 
 #[test]
 fn h2_goaways_connections() {
