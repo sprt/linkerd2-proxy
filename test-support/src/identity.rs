@@ -120,7 +120,6 @@ impl Identity {
                     .unwrap()
             };
             let mut id = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-            id.push("test-support");
             id.push("src");
             id.push("data");
 
