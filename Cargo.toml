@@ -96,8 +96,8 @@ tokio-current-thread = "0.1.4"
 
 # Debug symbols end up chewing up several GB of disk space, so better to just
 # disable them.
-[profile.dev]
-debug = false
+# [profile.dev]
+# debug = false
 [profile.test]
 debug = false
 

@@ -1,6 +1,5 @@
 #![recursion_limit = "128"]
 #![deny(warnings)]
-#[macro_use]
 extern crate linkerd2_test as support;
 use support::*;
 use support::tap::TapEventExt;

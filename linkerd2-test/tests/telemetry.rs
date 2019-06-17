@@ -5,7 +5,6 @@ extern crate log;
 extern crate flate2;
 extern crate regex;
 
-#[macro_use]
 extern crate linkerd2_test as support;
 use support::*;
 use std::io::Read;

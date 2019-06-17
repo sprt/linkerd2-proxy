@@ -1,10 +1,10 @@
 //! A client for the controller's Destination service.
 //!
-//! This client is split into two primary components: A `Resolver`, that routers use to
-//! initiate service discovery for a given name, and a `background::Process` that
-//! satisfies these resolution requests. These components are separated by a channel so
-//! that the thread responsible for proxying data need not also do this administrative
-//! work of communicating with the control plane.
+//! This client is split into two primary components: A `Resolver`, implementing the
+//! `proxy::resolve::Resolve` trait, that routers use to initiate service discovery for a
+//! given name, and a `Resolution`, implementing the `proxy::resolve::Resolution` trait,
+//! that provides discovery updates and manages the destination service connection for
+//! that resolution.
 //!
 //! The number of active resolutions is not currently bounded by this module. Instead, we
 //! trust that callers of `Resolver` enforce such a constraint (for example, via
@@ -15,14 +15,6 @@
 //! Furthermore, there are not currently any bounds on the number of endpoints that may be
 //! returned for a single resolution. It is expected that the Destination service enforce
 //! some reasonable upper bounds.
-//!
-//! ## TODO
-//!
-//! - Given that the underlying gRPC client has some max number of concurrent streams, we
-//!   actually do have an upper bound on concurrent resolutions. This needs to be made
-//!   more explicit.
-//! - We need some means to limit the number of endpoints that can be returned for a
-//!   single resolution so that `control::Cache` is not effectively unbounded.
 use indexmap::IndexMap;
 use std::sync::Arc;
 use tower_grpc::{generic::client::GrpcService, Body, BoxBody};
