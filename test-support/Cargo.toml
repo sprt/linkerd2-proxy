@@ -1,5 +1,5 @@
 [package]
-name = "linkerd2-test"
+name = "linkerd2-test-support"
 version = "0.1.0"
 authors = ["Eliza Weisman <eliza@buoyant.io>"]
 publish = false

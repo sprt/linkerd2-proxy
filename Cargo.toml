@@ -8,7 +8,7 @@ members = [
     "lib/stack",
     "lib/task",
     "lib/timeout",
-    "linkerd2-test",
+    "test-support",
 ]
 
 [package]
@@ -85,8 +85,9 @@ procinfo = "0.4.2"
 [dev-dependencies]
 net2 = "0.2"
 quickcheck = { version = "0.8", default-features = false }
-linkerd2-metrics = { path = "./lib/metrics", features = ["test_util"] }
-linkerd2-task    = { path = "lib/task", features = ["test_util"] }
+linkerd2-metrics        = { path = "./lib/metrics", features = ["test_util"] }
+linkerd2-task           = { path = "lib/task", features = ["test_util"] }
+linkerd2-test-support   = { path = "./test-support" }
 linkerd2-proxy-api = { git = "https://github.com/linkerd/linkerd2-proxy-api", features = ["arbitrary"], tag = "v0.1.8" }
 flate2 = { version = "1.0.1", default-features = false, features = ["rust_backend"] }
 # `tokio-io` is needed for TCP tests, because `tokio::io` doesn't re-export

@@ -1,6 +1,6 @@
 #![deny(warnings)]
 #![recursion_limit = "128"]
-extern crate linkerd2_test as support;
+extern crate linkerd2_test_support as support;
 use support::*;
 
 #[test]

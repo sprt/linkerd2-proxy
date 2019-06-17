@@ -1,7 +1,7 @@
 #![deny(warnings)]
 #![recursion_limit = "128"]
 #[macro_use]
-extern crate linkerd2_test as support;
+extern crate linkerd2_test_support as support;
 use support::*;
 
 macro_rules! generate_tests {

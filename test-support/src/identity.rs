@@ -120,7 +120,7 @@ impl Identity {
                     .unwrap()
             };
             let mut id = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-            id.push("linkerd2-test");
+            id.push("test-support");
             id.push("src");
             id.push("data");
 

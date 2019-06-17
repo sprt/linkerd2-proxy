@@ -537,6 +537,7 @@ dependencies = [
  "linkerd2-router 0.1.0",
  "linkerd2-stack 0.1.0",
  "linkerd2-task 0.1.0",
+ "linkerd2-test-support 0.1.0",
  "linkerd2-timeout 0.1.0",
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "net2 0.2.32 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -623,7 +624,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "linkerd2-test"
+name = "linkerd2-test-support"
 version = "0.1.0"
 dependencies = [
  "bytes 0.4.11 (registry+https://github.com/rust-lang/crates.io-index)",

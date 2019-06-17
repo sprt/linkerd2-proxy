@@ -5,7 +5,7 @@ extern crate log;
 extern crate flate2;
 extern crate regex;
 
-extern crate linkerd2_test as support;
+extern crate linkerd2_test_support as support;
 use support::*;
 use std::io::Read;
 use support::bytes::IntoBuf;

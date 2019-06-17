@@ -73,7 +73,7 @@ fmt:
 
 .PHONY: test
 test: fetch
-	$(CARGO_TEST) --no-default-features && $(CARGO_TEST) --no-default-features -p linkerd2-test
+	$(CARGO_TEST) --no-default-features
 
 .PHONY: test-flakey
 test-flakey: fetch
