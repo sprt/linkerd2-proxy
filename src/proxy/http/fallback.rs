@@ -12,8 +12,8 @@ use svc;
 /// to call the secondary `MakeService`.
 #[derive(Clone, Debug)]
 pub struct Layer<A, B, P = fn(&proxy::Error) -> bool> {
-    primary: svc::Builder<A>,
-    fallback: svc::Builder<B>,
+    primary: A,
+    fallback: B,
     predicate: P,
 }
 
@@ -51,7 +51,7 @@ enum FallbackState<A, B, T> {
     Fallback(B),
 }
 
-pub fn layer<A, B>(primary: svc::Builder<A>, fallback: svc::Builder<B>) -> Layer<A, B> {
+pub fn layer<A, B>(primary: A, fallback: B) -> Layer<A, B> {
     let predicate: fn(&proxy::Error) -> bool = |_| true;
     Layer {
         primary,
@@ -97,8 +97,8 @@ where
 
     fn layer(&self, inner: M) -> Self::Service {
         MakeSvc {
-            primary: self.primary.clone().service(inner.clone()),
-            fallback: self.fallback.clone().service(inner),
+            primary: self.primary.clone().layer(inner.clone()),
+            fallback: self.fallback.clone().layer(inner),
             predicate: self.predicate.clone(),
         }
     }

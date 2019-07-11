@@ -60,4 +60,8 @@ impl<L> Builder<L> {
     {
         self.0.service(service)
     }
+
+    pub fn into_inner(self) -> L {
+        self.0.into_inner()
+    }
 }

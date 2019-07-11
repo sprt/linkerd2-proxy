@@ -515,13 +515,15 @@ where
                         ep
                     },
                 ))
-                .layer(buffer::layer(max_in_flight, DispatchDeadline::extract));
+                .layer(buffer::layer(max_in_flight, DispatchDeadline::extract))
+                .into_inner();
 
             // Resolves the target via the control plane and balances requests
             // over all endpoints returned from the destination service.
             let balancer = svc::builder()
                 .layer(balance::layer(EWMA_DEFAULT_RTT, EWMA_DECAY))
-                .layer(resolve::layer(Resolve::new(resolver)));
+                .layer(resolve::layer(Resolve::new(resolver)))
+                .into_inner();
 
             let distributor = svc::builder()
                 .layer(
