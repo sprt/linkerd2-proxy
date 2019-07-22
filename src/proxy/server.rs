@@ -24,6 +24,8 @@ use transport::{
     Connection, Peek,
 };
 
+use trace::futures::Instrument;
+
 /// A protocol-transparent Server!
 ///
 /// As TCP streams are passed to `Server::serve`, the following occurs:
@@ -246,7 +248,8 @@ where
     ) -> impl Future<Item = (), Error = ()> {
         let orig_dst = connection.original_dst_addr();
         let disable_protocol_detection = !connection.should_detect_protocol();
-
+        let span = info_span!("conn", remote = %remote_addr, ?orig_dst);
+        let _enter = span.enter();
         let log = self.log.clone().with_remote(remote_addr);
 
         let source = Source {
@@ -265,7 +268,7 @@ where
             trace!("protocol detection disabled for {:?}", orig_dst);
             let fwd = tcp::forward(io, connect, source);
             let fut = self.drain_signal.clone().watch(fwd, |_| {});
-            return log.future(Either::B(fut));
+            return log.future(Either::B(fut)).instrument(span.clone());
         }
 
         let detect_protocol = io
@@ -341,6 +344,6 @@ where
             }),
         });
 
-        log.future(Either::A(serve))
+        log.future(Either::A(serve)).instrument(span.clone())
     }
 }
