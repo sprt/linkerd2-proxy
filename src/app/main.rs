@@ -32,6 +32,7 @@ use tap;
 use task;
 use telemetry;
 use trace;
+use trace::prelude::*;
 use transport::{self, connect, keepalive, tls, Connection, GetOriginalDst, Listen};
 use {Addr, Conditional};
 
@@ -885,6 +886,9 @@ where
     B: hyper::body::Payload + Default + Send + 'static,
     G: GetOriginalDst + Send + 'static,
 {
+    let router = router.with_traced_requests(|req: &http::Request<_>| {
+        info_span!("request", uri = %req.uri())
+    });
     let listen_addr = bound_port.local_addr();
     let server = proxy::Server::new(
         proxy_name,
