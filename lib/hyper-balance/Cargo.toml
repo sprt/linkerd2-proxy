@@ -10,6 +10,6 @@ futures = "0.1"
 http = "0.1"
 hyper = "0.12"
 
-tower-balance = { git = "https://github.com/tower-rs/tower" }
+tower-balance = { git = "https://github.com/tower-rs/tower", default-features=false }
 tower-load = { git = "https://github.com/tower-rs/tower" }
 tower-service = { git = "https://github.com/tower-rs/tower" }

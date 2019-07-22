@@ -75,6 +75,7 @@ tracing         = "0.1.2"
 tracing-fmt     = { git = "https://github.com/tokio-rs/tracing" }
 tracing-futures = { git = "https://github.com/tokio-rs/tracing" }
 tracing-log     = { git = "https://github.com/tokio-rs/tracing" }
+tracing-tower   = { git = "https://github.com/tokio-rs/tracing" }
 
 # tls
 ring = "0.14.6"

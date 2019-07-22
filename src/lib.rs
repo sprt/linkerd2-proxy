@@ -34,6 +34,7 @@ extern crate tower_grpc;
 extern crate tower_util;
 extern crate tracing_fmt;
 extern crate tracing_futures;
+extern crate tracing_tower;
 extern crate try_lock;
 
 #[macro_use]

@@ -206,10 +206,11 @@ where
                             Ok(Async::Ready(())) => svc.as_service(),
                             Ok(Async::NotReady) => return Ok(Async::NotReady),
                             Err(err) => {
-                                error!(
-                                    "profile service unexpected error (dst = {}): {:?}",
-                                    self.dst,
-                                    err.into(),
+                                let err = err.into();
+                                error!({
+                                    dst = ?self.dst,
+                                    %err,
+                                }, "profile service unexpected error"
                                 );
                                 return Ok(Async::Ready(()));
                             }
