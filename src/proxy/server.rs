@@ -248,7 +248,7 @@ where
     ) -> impl Future<Item = (), Error = ()> {
         let orig_dst = connection.original_dst_addr();
         let disable_protocol_detection = !connection.should_detect_protocol();
-        let span = info_span!("conn", remote = %remote_addr, ?orig_dst);
+        let span = info_span!("conn", remote = %remote_addr);
         let _enter = span.enter();
         let log = self.log.clone().with_remote(remote_addr);
 

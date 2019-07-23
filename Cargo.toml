@@ -56,7 +56,7 @@ regex = "1.0.0"
 tokio = "0.1.14"
 tokio-signal = "0.2"
 tokio-timer = "0.2.6"   # for tokio_timer::clock
-tower                  = { git = "https://github.com/tower-rs/tower" }
+tower                  = { git = "https://github.com/tower-rs/tower", default-features = false, features = ["full"] }
 tower-discover         = { git = "https://github.com/tower-rs/tower" }
 tower-service          = { git = "https://github.com/tower-rs/tower" }
 tower-util             = { git = "https://github.com/tower-rs/tower" }
@@ -109,7 +109,7 @@ debug = false
 
 [patch.crates-io]
 webpki = { git = "https://github.com/seanmonstar/webpki", branch = "cert-dns-names" }
-tower                  = { git = "https://github.com/tower-rs/tower" }
+tower                  = { git = "https://github.com/tower-rs/tower", default-features = false, features = ["full"] }
 tower-discover         = { git = "https://github.com/tower-rs/tower" }
 tower-service          = { git = "https://github.com/tower-rs/tower" }
 tower-util             = { git = "https://github.com/tower-rs/tower" }
@@ -117,4 +117,3 @@ tower-balance          = { git = "https://github.com/tower-rs/tower",  default-f
 tower-load             = { git = "https://github.com/tower-rs/tower" }
 tower-reconnect        = { git = "https://github.com/tower-rs/tower" }
 tower-spawn-ready      = { git = "https://github.com/tower-rs/tower" }
-

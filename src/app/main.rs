@@ -469,6 +469,7 @@ where
                 .layer(client::layer("out", config.h2_settings))
                 .service(connect.clone());
 
+            let ep_span: fn(&outbound::Endpoint) -> trace::Span = |ep: &outbound::Endpoint| { trace_span!("endpoint", endpoint = ?ep) };
             // A per-`outbound::Endpoint` stack that:
             //
             // 1. Records http metrics  with per-endpoint labels.
@@ -482,6 +483,7 @@ where
             // 6. Strips any `l5d-server-id` that may have been received from
             //    the server, before we apply our own.
             let endpoint_stack = svc::builder()
+                .layer(trace::service_span::make::layer(ep_span))
                 .layer(metrics::layer::<_, classify::Response>(
                     endpoint_http_metrics,
                 ))
@@ -886,9 +888,8 @@ where
     B: hyper::body::Payload + Default + Send + 'static,
     G: GetOriginalDst + Send + 'static,
 {
-    let router = router.with_traced_requests(|req: &http::Request<_>| {
-        info_span!("request", uri = %req.uri())
-    });
+    let router = router
+        .with_traced_requests(|req: &http::Request<_>| info_span!("request", uri = %req.uri()));
     let listen_addr = bound_port.local_addr();
     let server = proxy::Server::new(
         proxy_name,
@@ -913,7 +914,7 @@ where
                 future::result(r)
             }),
         )
-        .instrument(info_span!("proxy", server = %proxy_name, local.addr = %listen_addr));
+        .instrument(info_span!("server", proxy = %proxy_name, listen = %listen_addr));
 
     let accept_until = Cancelable {
         future,

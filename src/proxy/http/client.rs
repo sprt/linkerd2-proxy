@@ -14,6 +14,7 @@ use app::config::H2Settings;
 use proxy::Error;
 use svc::{self, ServiceExt};
 use transport::{connect, tls};
+use trace::prelude::*;
 
 /// Configurs an HTTP client that uses a `C`-typed connector
 ///
@@ -135,7 +136,8 @@ where
         let connect = self.connect.clone();
         let executor = ::logging::Client::proxy(self.proxy_name, config.peer_addr())
             .with_settings(config.http_settings().clone())
-            .executor();
+            .executor()
+            .instrument(info_span!("client", server = %self.proxy_name, remote = %config.peer_addr()));
 
         match *config.http_settings() {
             Settings::Http1 {
