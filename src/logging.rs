@@ -1,3 +1,4 @@
+#![allow(dead_code, unused_imports, unused_variables)]
 use futures::future::{ExecuteError, Executor};
 use futures::{Future, Poll};
 use std::cell::RefCell;
@@ -29,7 +30,8 @@ pub mod trace {
         pub use tracing_tower::InstrumentableService as __Trace_Instrument_Service;
     }
 
-    type SubscriberBuilder = Builder<format::NewRecorder, Format, filter::EnvFilter>;
+    type SubscriberBuilder =
+        Builder<format::NewRecorder, Format, filter::EnvFilter>;
     pub type Error = Box<error::Error + Send + Sync + 'static>;
 
     #[derive(Clone)]
@@ -53,7 +55,7 @@ pub mod trace {
         let handle = builder.reload_handle();
         let dispatch = Dispatch::new(builder.finish());
         dispatcher::set_global_default(dispatch)?;
-        tracing_log::LogTracer::init()?;
+        // tracing_log::LogTracer::init()?;
 
         Ok(LevelHandle { inner: handle })
     }
@@ -161,10 +163,16 @@ pub mod trace {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
             let mut seen = false;
             self.0.visit_spans(|_, span| {
+                let name = span.name();
+                let fields = span.fields();
+
+                if name.starts_with('_') && fields.is_empty() {
+                    return Ok(());
+                }
+
                 write!(f, "{}", span.name())?;
                 seen = true;
 
-                let fields = span.fields();
                 if !fields.is_empty() {
                     write!(f, "{{{}}}", fields)?;
                 }

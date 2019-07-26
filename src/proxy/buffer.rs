@@ -7,9 +7,10 @@ use std::{error, fmt};
 
 use futures::{Async, Future, Poll};
 use tokio_timer::{clock, Delay};
+use tokio::executor::DefaultExecutor;
 use tower::buffer;
 
-use logging;
+use trace::{self, prelude::*};
 use proxy::Error;
 use svc;
 
@@ -63,10 +64,10 @@ pub enum DequeueFuture<F> {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Aborted;
 
-pub struct MakeFuture<F, T, D, Req> {
+pub struct MakeFuture<F, D, Req> {
     capacity: usize,
     deadline: D,
-    executor: logging::ContextualExecutor<T>,
+    executor: trace::futures::Instrumented<DefaultExecutor>,
     inner: F,
     _marker: PhantomData<fn(Req)>,
 }
@@ -137,14 +138,15 @@ where
 {
     type Response = Enqueue<M::Response, D, Req>;
     type Error = Error;
-    type Future = MakeFuture<M::Future, T, D, Req>;
+    type Future = MakeFuture<M::Future, D, Req>;
 
     fn poll_ready(&mut self) -> Poll<(), Self::Error> {
         self.inner.poll_ready().map_err(Into::into)
     }
 
     fn call(&mut self, target: T) -> Self::Future {
-        let executor = logging::context_executor(target.clone());
+        let executor = DefaultExecutor::current()
+            .instrument(trace_span!("buffer", %target));
         let inner = self.inner.call(target);
 
         Self::Future {
@@ -174,7 +176,7 @@ where
             self.inner.make(target),
             self.deadline.clone(),
             self.capacity,
-            &mut logging::context_executor(target.clone()),
+            &mut task::LazyExecutor.instrument(trace_span!("buffer", %target)),
         )
     }
 }
@@ -195,14 +197,14 @@ impl<M, D, Req> Make<M, D, Req> {
             self.inner.make(&target),
             self.deadline.clone(),
             self.capacity,
-            &mut logging::context_executor(target),
+            &mut task::LazyExecutor.instrument(trace_span!("buffer", %target))
         )
     }
 }
 
 // === impl MakeFuture ===
 
-impl<F, T, D, Req, Svc> Future for MakeFuture<F, T, D, Req>
+impl<F, D, Req, Svc> Future for MakeFuture<F, D, Req>
 where
     F: Future<Item = Svc>,
     F::Error: Into<Error>,
@@ -211,7 +213,6 @@ where
     Svc::Error: Into<Error>,
     D: Deadline<Req>,
     Req: Send + 'static,
-    T: fmt::Display + Send + Sync + 'static,
 {
     type Item = Enqueue<Svc, D, Req>;
     type Error = Error;

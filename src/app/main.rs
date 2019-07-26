@@ -483,6 +483,7 @@ where
             // 6. Strips any `l5d-server-id` that may have been received from
             //    the server, before we apply our own.
             let endpoint_stack = svc::builder()
+
                 .layer(trace::service_span::make::layer(ep_span))
                 .layer(metrics::layer::<_, classify::Response>(
                     endpoint_http_metrics,
@@ -494,6 +495,7 @@ where
                 //.layer(add_remote_ip_on_rsp::layer())
                 .layer(strip_header::response::layer(super::L5D_SERVER_ID))
                 .layer(strip_header::response::layer(super::L5D_REMOTE_IP))
+
                 .service(client_stack);
             // A per-`dst::Route` layer that uses profile data to configure
             // a per-route layer.
@@ -545,6 +547,10 @@ where
                 )
                 .service(endpoint_stack);
 
+
+            let dst_span: fn(&DstAddr) -> trace::Span = |dst: &DstAddr| { info_span!("dst", %dst) };
+            let dst_reqs: fn(&http::Request<_>) -> trace::Span = |_| { info_span!("dst_REQ") };
+
             // A per-`DstAddr` stack that does the following:
             //
             // 1. Adds the `CANONICAL_DST_HEADER` from the `DstAddr`.
@@ -553,6 +559,8 @@ where
             // 3. Creates a load balancer , configured by resolving the
             //   `DstAddr` with a resolver.
             let dst_stack = svc::builder()
+                .layer(trace::service_span::make::layer(dst_span))
+                .layer(trace::request_span::make::layer(dst_reqs))
                 .layer(header_from_target::layer(super::CANONICAL_DST_HEADER))
                 .layer(profiles::router::layer(
                     profile_suffixes,
