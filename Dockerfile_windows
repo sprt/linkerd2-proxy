@@ -1,0 +1,21 @@
+# This image must refer to the daily build version.
+FROM microsoft/windowsservercore:latest
+
+# Server Core needs the Visual Studio tools to run Rust programs.
+RUN powershell -Command \
+    Invoke-WebRequest \
+    -Uri https://download.visualstudio.microsoft.com/download/pr/d7a25330-4e7c-4849-8ac9-880591021e5c/d94a138de184d953c1c79be36d40c740/vs_buildtools.exe \
+    -OutFile C:\vs_buildtools.exe
+RUN C:\Windows\Syswow64\msiexec.exe /unregister
+RUN C:\Windows\Syswow64\msiexec.exe /register
+RUN C:\vs_buildtools.exe --quiet --norestart --locale en-US --noUpdateInstaller \
+    --nocache --wait --add Microsoft.VisualStudio.Workload.VCTools
+
+# Assume the binary has been built already and is the current directory.
+COPY linkerd2-proxy.exe /
+
+RUN net user /add ProxyAdmin
+RUN net localgroup Administrators ProxyAdmin /add
+USER ProxyAdmin
+
+ENTRYPOINT ["C:\\linkerd2-proxy.exe"]

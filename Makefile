@@ -90,5 +90,9 @@ clean-package:
 docker: Dockerfile Cargo.lock
 	$(DOCKER_BUILD) .
 
+.PHONY: docker-windows
+docker-windows: Dockerfile_windows Cargo.lock
+	docker build -t linkerd2-proxy-win -f Dockerfile_windows .
+
 .PHONY: all
 all: build test

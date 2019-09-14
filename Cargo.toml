@@ -87,6 +87,10 @@ untrusted = "0.6"
 libc = "0.2"
 procinfo = "0.4.2"
 
+[target.'cfg(target_os = "windows")'.dependencies]
+winapi = "0.3.8"
+ws2_32-sys = "0.2.1"
+
 [dev-dependencies]
 net2 = "0.2"
 quickcheck = { version = "0.8", default-features = false }
